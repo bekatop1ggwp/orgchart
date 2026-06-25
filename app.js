@@ -245,7 +245,7 @@
   function parentDepartmentOptions(department) {
     const excluded = departmentDescendantIds(department.id);
     excluded.add(department.id);
-    return [option("", "— верхний уровень —", department.parentDepartmentId)]
+    return [option("", "— самостоятельный отдел —", department.parentDepartmentId)]
       .concat(state.departments
         .filter(candidate => !excluded.has(candidate.id))
         .map(candidate => option(candidate.id, candidate.name || `Отдел ${candidate.id}`, department.parentDepartmentId)))
@@ -292,32 +292,61 @@
         <td>${inputControl("department", department, "id", "ID отдела")}</td>
         <td>${inputControl("department", department, "name", "Название отдела")}</td>
         <td>${selectControl("department", department, "parentDepartmentId", "Родительский отдел", parentDepartmentOptions(department))}</td>
-        <td>${selectControl("department", department, "reportsToId", "Кому подчиняется отдел", personOptions(department.reportsToId, "", "— верхний уровень —"))}</td>
+        <td>${selectControl("department", department, "reportsToId", "Подчиняется сотруднику", personOptions(department.reportsToId, "", "— не выбран —"))}</td>
         <td>${selectControl("department", department, "headId", "Руководитель отдела", headOptions(department))}</td>
         <td><button type="button" class="delete-button danger" data-delete-entity="department" data-delete-id="${escapeHtml(department.id)}" aria-label="Удалить ${escapeHtml(department.name)}">×</button></td>
       </tr>
     `).join("");
   }
 
-  function renderPerson(person, scopeDepartmentId, path = new Set()) {
-    const key = `person:${person.id}`;
-    if (path.has(key)) return `<div class="org-node employee"><div class="name">Цикл: ${escapeHtml(person.name)}</div></div>`;
-    const nextPath = new Set(path).add(key);
-    const children = state.people.filter(child => child.managerId === person.id && child.departmentId === scopeDepartmentId);
-    const departments = state.departments.filter(department => !department.parentDepartmentId && department.reportsToId === person.id);
-    const descendants = [
-      ...children.map(child => ({ kind: "person", value: child })),
-      ...departments.map(department => ({ kind: "department", value: department }))
-    ];
-    const department = state.departments.find(item => item.id === person.departmentId);
+  function compareByName(left, right) {
+    return (left.name || left.id).localeCompare(right.name || right.id, "ru");
+  }
 
+  function personCard(person) {
+    const department = state.departments.find(item => item.id === person.departmentId);
     return `
       <div class="org-node ${escapeHtml(person.role)}">
         <div class="name">${escapeHtml(person.name || "Без имени")}</div>
         <div class="position">${escapeHtml(person.position || ROLE_LABELS[person.role])}</div>
         ${department ? `<div class="meta">${escapeHtml(department.name)}</div>` : ""}
       </div>
+    `;
+  }
+
+  function renderPerson(person, scopeDepartmentId = "", path = new Set()) {
+    const key = `person:${person.id}`;
+    if (path.has(key)) return `<div class="org-node employee"><div class="name">Цикл: ${escapeHtml(person.name)}</div></div>`;
+    const nextPath = new Set(path).add(key);
+    const children = state.people
+      .filter(child => child.managerId === person.id && child.departmentId === scopeDepartmentId)
+      .sort(compareByName);
+    const departments = state.departments
+      .filter(department => !department.parentDepartmentId && department.reportsToId === person.id)
+      .sort(compareByName);
+    const descendants = [
+      ...children.map(child => ({ kind: "person", value: child })),
+      ...departments.map(department => ({ kind: "department", value: department }))
+    ];
+
+    return `
+      ${personCard(person)}
       ${renderChildren(descendants, nextPath)}
+    `;
+  }
+
+  function renderDepartmentPerson(person, departmentId, path = new Set()) {
+    const key = `department-person:${departmentId}:${person.id}`;
+    if (path.has(key)) return `<div class="org-node employee"><div class="name">Цикл: ${escapeHtml(person.name)}</div></div>`;
+    const nextPath = new Set(path).add(key);
+    const children = state.people
+      .filter(child => child.departmentId === departmentId && child.managerId === person.id)
+      .sort(compareByName)
+      .map(child => ({ kind: "department-person", value: child, departmentId }));
+
+    return `
+      ${personCard(person)}
+      ${renderChildren(children, nextPath)}
     `;
   }
 
@@ -325,38 +354,47 @@
     const key = `department:${department.id}`;
     if (path.has(key)) return `<div class="department-box"><div class="department-title">Цикл: ${escapeHtml(department.name)}</div></div>`;
     const nextPath = new Set(path).add(key);
-    const members = state.people.filter(person => person.departmentId === department.id);
+    const members = state.people.filter(person => person.departmentId === department.id).sort(compareByName);
     const memberIds = new Set(members.map(person => person.id));
-    const memberRoots = members.filter(person => !person.managerId || !memberIds.has(person.managerId));
-    const orderedRoots = [...memberRoots].sort((left, right) => {
-      if (left.id === department.headId) return -1;
-      if (right.id === department.headId) return 1;
-      return 0;
-    });
-    const subdepartments = state.departments.filter(item => item.parentDepartmentId === department.id);
-    const descendants = [
-      ...orderedRoots.map(person => ({ kind: "person", value: person, scopeDepartmentId: department.id })),
-      ...subdepartments.map(item => ({ kind: "department", value: item }))
-    ];
-    const leafGrid = descendants.length > 3 && descendants.every(item => item.kind === "person" && !state.people.some(child => child.managerId === item.value.id && child.departmentId === department.id));
+    const head = members.find(person => person.id === department.headId);
+    const headBranch = head ? [{ kind: "department-person", value: head, departmentId: department.id }] : [];
+    const staffRoots = members
+      .filter(person => person.id !== department.headId)
+      .filter(person => !person.managerId || !memberIds.has(person.managerId))
+      .map(person => ({ kind: "department-person", value: person, departmentId: department.id }));
+    const subdepartments = state.departments
+      .filter(item => item.parentDepartmentId === department.id)
+      .sort(compareByName)
+      .map(item => ({ kind: "department", value: item }));
+    const staffLeafGrid = staffRoots.length > 3 && staffRoots.every(item => !state.people.some(child => child.managerId === item.value.id && child.departmentId === department.id));
     const reportsTo = state.people.find(person => person.id === department.reportsToId);
+    const hasBody = headBranch.length || staffRoots.length || subdepartments.length;
 
     return `
       <div class="department-box">
         <div class="department-title">
           ${escapeHtml(department.name || "Отдел без названия")}
-          <small>${members.length} ${plural(members.length, "сотрудник", "сотрудника", "сотрудников")}${reportsTo ? ` · ${escapeHtml(reportsTo.name)}` : ""}</small>
+          <small>${members.length} ${plural(members.length, "сотрудник", "сотрудника", "сотрудников")}${reportsTo ? ` · подчиняется: ${escapeHtml(reportsTo.name)}` : ""}</small>
         </div>
-        ${renderChildren(descendants, nextPath, leafGrid ? "leaf-grid" : "")}
+        ${hasBody ? `
+          <div class="department-content">
+            ${headBranch.length ? `<div class="department-section department-head">${renderChildren(headBranch, nextPath, "no-connectors")}</div>` : ""}
+            ${staffRoots.length ? `<div class="department-section">${renderChildren(staffRoots, nextPath, staffLeafGrid ? "leaf-grid no-connectors" : "")}</div>` : ""}
+            ${subdepartments.length ? `<div class="department-section subdepartments">${renderChildren(subdepartments, nextPath)}</div>` : ""}
+          </div>
+        ` : `<div class="department-empty">Нет сотрудников</div>`}
       </div>
     `;
   }
 
   function renderChildren(items, path, extraClass = "") {
     if (!items.length) return "";
-    return `<div class="children ${extraClass}">${items.map(item => `
+    const relationClass = items.length === 1 ? "single" : "multiple";
+    return `<div class="children ${relationClass} ${extraClass}">${items.map(item => `
       <div class="branch">
-        ${item.kind === "person"
+        ${item.kind === "department-person"
+          ? renderDepartmentPerson(item.value, item.departmentId, path)
+          : item.kind === "person"
           ? renderPerson(item.value, item.scopeDepartmentId ?? item.value.departmentId, path)
           : renderDepartment(item.value, path)}
       </div>`).join("")}</div>`;
@@ -378,7 +416,7 @@
     const rootDepartments = state.departments
       .filter(department => !department.parentDepartmentId && !department.reportsToId)
       .map(department => ({ kind: "department", value: department }));
-    return [...roots, ...rootDepartments];
+    return [...roots, ...rootDepartments].sort((left, right) => compareByName(left.value, right.value));
   }
 
   function renderChart() {
@@ -508,8 +546,6 @@
         });
       }
       item[field] = value;
-      if (entity === "department" && field === "parentDepartmentId" && value) item.reportsToId = "";
-      if (entity === "department" && field === "reportsToId" && value) item.parentDepartmentId = "";
       if (entity === "department" && field === "headId" && value) {
         const head = state.people.find(person => person.id === value);
         if (head) {

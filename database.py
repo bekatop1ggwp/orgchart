@@ -50,7 +50,6 @@ def initialize() -> None:
                 reports_to_id TEXT,
                 head_id TEXT,
                 CHECK (parent_department_id IS NULL OR parent_department_id <> id),
-                CHECK (parent_department_id IS NULL OR reports_to_id IS NULL),
                 FOREIGN KEY (parent_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
                 FOREIGN KEY (reports_to_id) REFERENCES people(id)
@@ -99,6 +98,29 @@ def initialize() -> None:
             END;
             """
         )
+        migrate_department_parent_reports_constraint(connection)
+        connection.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_people_department ON people(department_id);
+            CREATE INDEX IF NOT EXISTS idx_people_manager ON people(manager_id);
+            CREATE INDEX IF NOT EXISTS idx_departments_parent ON departments(parent_department_id);
+            CREATE INDEX IF NOT EXISTS idx_departments_reports_to ON departments(reports_to_id);
+
+            CREATE TRIGGER IF NOT EXISTS people_id_globally_unique
+            BEFORE INSERT ON people
+            WHEN EXISTS (SELECT 1 FROM departments WHERE id = NEW.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'ID already belongs to a department');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS department_id_globally_unique
+            BEFORE INSERT ON departments
+            WHEN EXISTS (SELECT 1 FROM people WHERE id = NEW.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'ID already belongs to a person');
+            END;
+            """
+        )
         connection.execute(
             "INSERT OR IGNORE INTO metadata(key, value) VALUES ('revision', '0')"
         )
@@ -108,6 +130,60 @@ def initialize() -> None:
 
     if count == 0:
         reset_to_demo()
+
+
+def migrate_department_parent_reports_constraint(connection: sqlite3.Connection) -> None:
+    row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'departments'"
+    ).fetchone()
+    new_row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'departments_new'"
+    ).fetchone()
+    if not row and new_row:
+        connection.execute("DROP TRIGGER IF EXISTS people_id_globally_unique")
+        connection.execute("DROP TRIGGER IF EXISTS department_id_globally_unique")
+        connection.execute("ALTER TABLE departments_new RENAME TO departments")
+        return
+
+    create_sql = row[0] if row else ""
+    old_constraint = "CHECK (parent_department_id IS NULL OR reports_to_id IS NULL)"
+    if old_constraint not in create_sql:
+        return
+
+    connection.commit()
+    connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        connection.executescript(
+            """
+            DROP TRIGGER IF EXISTS people_id_globally_unique;
+            DROP TRIGGER IF EXISTS department_id_globally_unique;
+            DROP TABLE IF EXISTS departments_new;
+
+            CREATE TABLE departments_new (
+                id TEXT PRIMARY KEY NOT NULL CHECK (length(trim(id)) > 0),
+                name TEXT NOT NULL DEFAULT '',
+                parent_department_id TEXT,
+                reports_to_id TEXT,
+                head_id TEXT,
+                CHECK (parent_department_id IS NULL OR parent_department_id <> id),
+                FOREIGN KEY (parent_department_id) REFERENCES departments(id)
+                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+                FOREIGN KEY (reports_to_id) REFERENCES people(id)
+                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+                FOREIGN KEY (head_id) REFERENCES people(id)
+                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
+            );
+
+            INSERT INTO departments_new(id, name, parent_department_id, reports_to_id, head_id)
+            SELECT id, name, parent_department_id, reports_to_id, head_id
+            FROM departments;
+
+            DROP TABLE departments;
+            ALTER TABLE departments_new RENAME TO departments;
+            """
+        )
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
 
 
 def normalize_structure(payload: Any) -> dict[str, Any]:
@@ -194,10 +270,6 @@ def validate_structure(structure: dict[str, Any]) -> None:
             raise ValidationError(f"Куратор отдела «{department['name']}» не найден.")
         if department["headId"] and department["headId"] not in people_ids:
             raise ValidationError(f"Руководитель отдела «{department['name']}» не найден.")
-        if department["parentDepartmentId"] and department["reportsToId"]:
-            raise ValidationError(
-                f"Отдел «{department['name']}» не может одновременно входить в отдел и подчиняться сотруднику."
-            )
         if department["headId"]:
             head = next(person for person in people if person["id"] == department["headId"])
             if head["departmentId"] != department["id"]:

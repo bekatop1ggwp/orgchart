@@ -74,9 +74,6 @@ export function normalizeAndValidate(payload) {
     if (department.headId && !peopleById.has(department.headId)) {
       throw new ValidationError(`Руководитель отдела «${department.name}» не найден.`);
     }
-    if (department.parentDepartmentId && department.reportsToId) {
-      throw new ValidationError(`Отдел «${department.name}» не может иметь двух родителей.`);
-    }
     if (department.headId && peopleById.get(department.headId).departmentId !== department.id) {
       throw new ValidationError(`Руководитель отдела «${department.name}» должен состоять в этом отделе.`);
     }

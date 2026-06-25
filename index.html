@@ -58,7 +58,7 @@
       <div class="panel-heading">
         <div>
           <h2>Редактор структуры</h2>
-          <p class="panel-subtitle">Отдел определяет принадлежность, руководитель — прямую линию подчинения.</p>
+          <p class="panel-subtitle">Отдел показывает место работы, прямой руководитель — личную линию подчинения, а отдел подчиняется выбранному сотруднику.</p>
         </div>
         <div id="saveStatus" class="save-status" role="status">SQLite</div>
       </div>
@@ -99,7 +99,7 @@
 
         <article class="table-card">
           <div class="table-title">
-            <div><h3>Отделы</h3><small>Структурное вложение, куратор и руководитель</small></div>
+            <div><h3>Отделы</h3><small>Родительский отдел нужен только для подразделений; основная связь идет через сотрудника</small></div>
             <span id="departmentsCount" class="count-badge"></span>
           </div>
           <div class="table-wrap">
@@ -108,8 +108,8 @@
                 <tr>
                   <th>ID</th>
                   <th>Название</th>
-                  <th>В составе отдела</th>
-                  <th>Кому подчиняется</th>
+                  <th>Родительский отдел</th>
+                  <th>Подчиняется сотруднику</th>
                   <th>Руководитель отдела</th>
                   <th><span class="sr-only">Действия</span></th>
                 </tr>
