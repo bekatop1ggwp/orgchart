@@ -304,12 +304,10 @@
   }
 
   function personCard(person) {
-    const department = state.departments.find(item => item.id === person.departmentId);
     return `
       <div class="org-node ${escapeHtml(person.role)}">
         <div class="name">${escapeHtml(person.name || "Без имени")}</div>
         <div class="position">${escapeHtml(person.position || ROLE_LABELS[person.role])}</div>
-        ${department ? `<div class="meta">${escapeHtml(department.name)}</div>` : ""}
       </div>
     `;
   }
@@ -352,7 +350,15 @@
 
   function renderDepartment(department, path = new Set()) {
     const key = `department:${department.id}`;
-    if (path.has(key)) return `<div class="department-box"><div class="department-title">Цикл: ${escapeHtml(department.name)}</div></div>`;
+    if (path.has(key)) return `
+      <div class="department-box">
+        <div class="department-header">
+          <div class="department-info">
+            <div class="department-name">Цикл: ${escapeHtml(department.name)}</div>
+          </div>
+        </div>
+      </div>
+    `;
     const nextPath = new Set(path).add(key);
     const members = state.people.filter(person => person.departmentId === department.id).sort(compareByName);
     const memberIds = new Set(members.map(person => person.id));
@@ -367,20 +373,24 @@
       .sort(compareByName)
       .map(item => ({ kind: "department", value: item }));
     const staffLeafGrid = staffRoots.length > 3 && staffRoots.every(item => !state.people.some(child => child.managerId === item.value.id && child.departmentId === department.id));
-    const reportsTo = state.people.find(person => person.id === department.reportsToId);
     const hasBody = headBranch.length || staffRoots.length || subdepartments.length;
 
     return `
       <div class="department-box">
-        <div class="department-title">
-          ${escapeHtml(department.name || "Отдел без названия")}
-          <small>${members.length} ${plural(members.length, "сотрудник", "сотрудника", "сотрудников")}${reportsTo ? ` · подчиняется: ${escapeHtml(reportsTo.name)}` : ""}</small>
+        <div class="department-header">
+          <div class="department-drag" aria-hidden="true">⋮⋮</div>
+          <div class="department-info">
+            <div class="department-name">${escapeHtml(department.name || "Отдел без названия")}</div>
+            <div class="department-meta">
+              <span class="department-badge">${members.length} ${plural(members.length, "сотрудник", "сотрудника", "сотрудников")}</span>
+            </div>
+          </div>
         </div>
         ${hasBody ? `
-          <div class="department-content">
-            ${headBranch.length ? `<div class="department-section department-head">${renderChildren(headBranch, nextPath, "no-connectors")}</div>` : ""}
-            ${staffRoots.length ? `<div class="department-section">${renderChildren(staffRoots, nextPath, staffLeafGrid ? "leaf-grid no-connectors" : "")}</div>` : ""}
-            ${subdepartments.length ? `<div class="department-section subdepartments">${renderChildren(subdepartments, nextPath)}</div>` : ""}
+          <div class="department-body">
+            ${headBranch.length ? `<div class="department-head-person">${renderChildren(headBranch, nextPath, "no-connectors")}</div>` : ""}
+            ${staffRoots.length ? `<div class="department-members">${renderChildren(staffRoots, nextPath, staffLeafGrid ? "leaf-grid no-connectors" : "")}</div>` : ""}
+            ${subdepartments.length ? `<div class="department-subdepartments">${renderChildren(subdepartments, nextPath)}</div>` : ""}
           </div>
         ` : `<div class="department-empty">Нет сотрудников</div>`}
       </div>
