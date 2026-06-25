@@ -272,6 +272,12 @@ def validate_structure(structure: dict[str, Any]) -> None:
     for person in people:
         if person["managerId"] and person["managerId"] not in people_ids:
             raise ValidationError(f"Руководитель сотрудника «{person['name']}» не найден.")
+        if person["managerId"]:
+            manager = next(item for item in people if item["id"] == person["managerId"])
+            if manager["departmentId"] != person["departmentId"]:
+                raise ValidationError(
+                    f"Прямой руководитель сотрудника «{person['name']}» должен быть из того же отдела."
+                )
         if person["departmentId"] and person["departmentId"] not in department_ids:
             raise ValidationError(f"Отдел сотрудника «{person['name']}» не найден.")
 

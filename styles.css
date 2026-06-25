@@ -339,35 +339,45 @@ main { display: grid; gap: 16px; padding: 16px; }
   min-width: 0;
 }
 
-.department-box > .department-body > .department-members > .children.leaf-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 164px);
-  min-width: 0;
-  gap: 14px;
+.department-member-rows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  gap: 18px;
+  position: relative;
 }
 
-.department-box .children.leaf-grid > .branch {
-  min-width: 164px;
-  width: 164px;
-  padding: 0;
+.department-member-rows.with-parent-line {
+  margin-top: 24px;
 }
 
-.department-box .children.department-grid {
-  display: grid;
+.department-member-rows.with-parent-line::before {
+  content: "";
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  width: 2px;
+  height: 18px;
+  transform: translateX(-50%);
+  background: var(--line);
+}
+
+.department-row {
+  display: flex;
   justify-content: center;
-  min-width: 0;
-  gap: 14px 22px;
-  padding-top: 0;
+  gap: 20px;
+  width: max-content;
+  padding: 0;
 }
 
-.department-box .children.department-grid.count-1 { grid-template-columns: repeat(1, 164px); }
-.department-box .children.department-grid.count-2 { grid-template-columns: repeat(2, 164px); }
-.department-box .children.department-grid.count-3 { grid-template-columns: repeat(3, 164px); }
-
-.department-box .children.department-grid > .branch {
-  min-width: 164px;
+.department-row-item {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
   width: 164px;
-  padding: 0;
 }
 
 .department-empty {
@@ -461,8 +471,7 @@ td .delete-button { min-width: 32px; min-height: 32px; padding: 5px 9px; }
   .app-header { padding: 16px; }
   main { padding: 8px; }
   .chart-wrap { min-height: 360px; padding: 18px; }
-  .department-box > .department-body > .department-members > .children.leaf-grid { grid-template-columns: repeat(2, 164px); }
-  .department-box .children.department-grid.count-3 { grid-template-columns: repeat(2, 164px); }
+  .department-row { gap: 14px; }
 }
 
 @media print {

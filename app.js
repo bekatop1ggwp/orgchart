@@ -251,9 +251,14 @@
   function managerOptions(person) {
     const excluded = personDescendantIds(person.id);
     excluded.add(person.id);
+    const sameScopeCandidates = state.people.filter(candidate => {
+      if (excluded.has(candidate.id)) return false;
+      return person.departmentId
+        ? candidate.departmentId === person.departmentId
+        : !candidate.departmentId;
+    });
     return [option("", "— верхний уровень —", person.managerId)]
-      .concat(state.people
-        .filter(candidate => !excluded.has(candidate.id))
+      .concat(sameScopeCandidates
         .map(candidate => option(candidate.id, `${candidate.name || `Сотрудник ${candidate.id}`} — ${candidate.position || ROLE_LABELS[candidate.role]}`, person.managerId)))
       .join("");
   }
@@ -347,6 +352,42 @@
     `;
   }
 
+  function layoutDepartmentMembers(members) {
+    const count = members.length;
+    const presets = {
+      1: [1],
+      2: [2],
+      3: [3],
+      4: [2, 2],
+      5: [3, 2],
+      6: [2, 2, 2],
+      7: [3, 2, 2],
+      8: [3, 3, 2],
+      9: [3, 3, 3],
+      10: [4, 3, 3],
+      11: [4, 4, 3],
+      12: [4, 4, 4]
+    };
+    const rowSizes = presets[count] || (() => {
+      const rowsCount = Math.ceil(count / 4);
+      const base = Math.floor(count / rowsCount);
+      let extra = count % rowsCount;
+      return Array.from({ length: rowsCount }, () => {
+        const size = base + (extra > 0 ? 1 : 0);
+        extra -= 1;
+        return Math.max(3, Math.min(4, size));
+      });
+    })();
+
+    const rows = [];
+    let offset = 0;
+    rowSizes.forEach(size => {
+      rows.push(members.slice(offset, offset + size));
+      offset += size;
+    });
+    return rows.filter(row => row.length);
+  }
+
   function renderPerson(person, scopeDepartmentId = "", path = new Set()) {
     const key = `person:${person.id}`;
     if (path.has(key)) return `<div class="org-node employee"><div class="name">Цикл: ${escapeHtml(person.name)}</div></div>`;
@@ -376,10 +417,11 @@
       .filter(child => child.departmentId === departmentId && child.managerId === person.id && !hiddenIds.has(child.id))
       .sort(compareByName)
       .map(child => ({ kind: "department-person", value: child, departmentId, hiddenIds }));
+    const compactGrid = children.length > 3 && children.every(item => !state.people.some(child => child.departmentId === departmentId && child.managerId === item.value.id && !hiddenIds.has(child.id)));
 
     return `
       ${personCard(person)}
-      ${renderChildren(children, nextPath)}
+      ${compactGrid ? renderDepartmentRows(children, nextPath, "with-parent-line") : renderChildren(children, nextPath)}
     `;
   }
 
@@ -426,11 +468,32 @@
         </div>
         ${hasBody ? `
           <div class="department-body">
-            ${headBranch.length ? `<div class="department-head-person">${renderChildren(headBranch, nextPath, headLeafGrid ? "department-grid no-connectors" : "")}</div>` : ""}
-            ${staffRoots.length ? `<div class="department-members">${renderChildren(staffRoots, nextPath, staffLeafGrid ? "department-grid no-connectors" : "")}</div>` : ""}
+            ${headBranch.length ? `<div class="department-head-person">${headLeafGrid ? renderDepartmentRows(headBranch, nextPath) : renderChildren(headBranch, nextPath, "no-connectors")}</div>` : ""}
+            ${staffRoots.length ? `<div class="department-members">${staffLeafGrid ? renderDepartmentRows(staffRoots, nextPath) : renderChildren(staffRoots, nextPath, "no-connectors")}</div>` : ""}
             ${subdepartments.length ? `<div class="department-subdepartments">${renderChildren(subdepartments, nextPath)}</div>` : ""}
           </div>
         ` : `<div class="department-empty">Нет сотрудников</div>`}
+      </div>
+    `;
+  }
+
+  function renderDepartmentRows(items, path, extraClass = "") {
+    if (!items.length) return "";
+    return `
+      <div class="department-member-rows ${extraClass}">
+        ${layoutDepartmentMembers(items).map(row => `
+          <div class="department-row">
+            ${row.map(item => `
+              <div class="department-row-item">
+                ${item.kind === "department-person"
+                  ? renderDepartmentPerson(item.value, item.departmentId, path, item.hiddenIds ?? new Set())
+                  : item.kind === "person"
+                  ? renderPerson(item.value, item.scopeDepartmentId ?? item.value.departmentId, path)
+                  : renderDepartment(item.value, path)}
+              </div>
+            `).join("")}
+          </div>
+        `).join("")}
       </div>
     `;
   }
@@ -593,11 +656,20 @@
     let error = "";
     if (field === "id") error = updateId(entity, id, value);
     else if (entity === "person" && field === "managerId" && personCycle(id, value)) error = "Нельзя назначить подчинённого руководителем: получится цикл.";
+    else if (entity === "person" && field === "managerId" && value) {
+      const manager = state.people.find(person => person.id === value);
+      if (!manager || manager.departmentId !== item.departmentId) error = "Прямой руководитель должен быть сотрудником того же отдела.";
+    }
     else if (entity === "department" && field === "parentDepartmentId" && departmentCycle(id, value)) error = "Нельзя вложить отдел в самого себя или его дочерний отдел.";
     else {
       if (entity === "person" && field === "departmentId") {
         state.departments.forEach(department => {
           if (department.id !== value) department.headId = joinIds(idList(department.headId).filter(headId => headId !== item.id));
+        });
+        const manager = state.people.find(person => person.id === item.managerId);
+        if (manager && manager.departmentId !== value) item.managerId = "";
+        state.people.forEach(person => {
+          if (person.managerId === item.id && person.departmentId !== value) person.managerId = "";
         });
       }
       item[field] = value;
