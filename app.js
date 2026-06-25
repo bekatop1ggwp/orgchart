@@ -186,6 +186,22 @@
     return `<option value="${escapeHtml(value)}" ${value === selectedValue ? "selected" : ""}>${escapeHtml(label)}</option>`;
   }
 
+  function idList(value) {
+    return text(value).split(",").map(text).filter(Boolean);
+  }
+
+  function idSet(value) {
+    return new Set(idList(value));
+  }
+
+  function joinIds(values) {
+    return [...new Set(values.map(text).filter(Boolean))].join(",");
+  }
+
+  function optionMulti(value, label, selectedValues) {
+    return `<option value="${escapeHtml(value)}" ${selectedValues.has(value) ? "selected" : ""}>${escapeHtml(label)}</option>`;
+  }
+
   function departmentOptions(selectedValue, excludedId = "") {
     return [option("", "— без отдела —", selectedValue)]
       .concat(state.departments
@@ -253,10 +269,29 @@
   }
 
   function headOptions(department) {
+    const selected = idSet(department.headId);
     const members = state.people.filter(person => person.departmentId === department.id);
-    return [option("", "— не назначен —", department.headId)]
-      .concat(members.map(person => option(person.id, `${person.name} — ${person.position}`, department.headId)))
+    return members
+      .map(person => optionMulti(person.id, `${person.name} — ${person.position}`, selected))
       .join("");
+  }
+
+  function headCheckboxes(department) {
+    const selected = idSet(department.headId);
+    const members = state.people.filter(person => person.departmentId === department.id).sort(compareByName);
+    if (!members.length) return `<div class="table-hint">Сначала назначьте сотрудников в отдел</div>`;
+    return `<div class="head-checkboxes">${members.map(person => `
+      <label class="head-checkbox">
+        <input
+          type="checkbox"
+          value="${escapeHtml(person.id)}"
+          ${selected.has(person.id) ? "checked" : ""}
+          data-entity="department"
+          data-id="${escapeHtml(department.id)}"
+          data-field="headId">
+        <span>${escapeHtml(person.name || `Сотрудник ${person.id}`)}${person.position ? ` — ${escapeHtml(person.position)}` : ""}</span>
+      </label>
+    `).join("")}</div>`;
   }
 
   function roleOptions(selectedValue) {
@@ -293,7 +328,7 @@
         <td>${inputControl("department", department, "name", "Название отдела")}</td>
         <td>${selectControl("department", department, "parentDepartmentId", "Родительский отдел", parentDepartmentOptions(department))}</td>
         <td>${selectControl("department", department, "reportsToId", "Подчиняется сотруднику", personOptions(department.reportsToId, "", "— не выбран —"))}</td>
-        <td>${selectControl("department", department, "headId", "Руководитель отдела", headOptions(department))}</td>
+        <td>${headCheckboxes(department)}</td>
         <td><button type="button" class="delete-button danger" data-delete-entity="department" data-delete-id="${escapeHtml(department.id)}" aria-label="Удалить ${escapeHtml(department.name)}">×</button></td>
       </tr>
     `).join("");
@@ -333,14 +368,14 @@
     `;
   }
 
-  function renderDepartmentPerson(person, departmentId, path = new Set()) {
+  function renderDepartmentPerson(person, departmentId, path = new Set(), hiddenIds = new Set()) {
     const key = `department-person:${departmentId}:${person.id}`;
     if (path.has(key)) return `<div class="org-node employee"><div class="name">Цикл: ${escapeHtml(person.name)}</div></div>`;
     const nextPath = new Set(path).add(key);
     const children = state.people
-      .filter(child => child.departmentId === departmentId && child.managerId === person.id)
+      .filter(child => child.departmentId === departmentId && child.managerId === person.id && !hiddenIds.has(child.id))
       .sort(compareByName)
-      .map(child => ({ kind: "department-person", value: child, departmentId }));
+      .map(child => ({ kind: "department-person", value: child, departmentId, hiddenIds }));
 
     return `
       ${personCard(person)}
@@ -362,16 +397,19 @@
     const nextPath = new Set(path).add(key);
     const members = state.people.filter(person => person.departmentId === department.id).sort(compareByName);
     const memberIds = new Set(members.map(person => person.id));
-    const head = members.find(person => person.id === department.headId);
-    const headBranch = head ? [{ kind: "department-person", value: head, departmentId: department.id }] : [];
+    const headIds = idSet(department.headId);
+    const headBranch = members
+      .filter(person => headIds.has(person.id))
+      .map(person => ({ kind: "department-person", value: person, departmentId: department.id, hiddenIds: headIds }));
     const staffRoots = members
-      .filter(person => person.id !== department.headId)
+      .filter(person => !headIds.has(person.id))
       .filter(person => !person.managerId || !memberIds.has(person.managerId))
       .map(person => ({ kind: "department-person", value: person, departmentId: department.id }));
     const subdepartments = state.departments
       .filter(item => item.parentDepartmentId === department.id)
       .sort(compareByName)
       .map(item => ({ kind: "department", value: item }));
+    const headLeafGrid = headBranch.length > 1 && headBranch.every(item => !state.people.some(child => child.managerId === item.value.id && child.departmentId === department.id));
     const staffLeafGrid = staffRoots.length > 3 && staffRoots.every(item => !state.people.some(child => child.managerId === item.value.id && child.departmentId === department.id));
     const hasBody = headBranch.length || staffRoots.length || subdepartments.length;
 
@@ -388,8 +426,8 @@
         </div>
         ${hasBody ? `
           <div class="department-body">
-            ${headBranch.length ? `<div class="department-head-person">${renderChildren(headBranch, nextPath, "no-connectors")}</div>` : ""}
-            ${staffRoots.length ? `<div class="department-members">${renderChildren(staffRoots, nextPath, staffLeafGrid ? "leaf-grid no-connectors" : "")}</div>` : ""}
+            ${headBranch.length ? `<div class="department-head-person">${renderChildren(headBranch, nextPath, headLeafGrid ? "department-grid no-connectors" : "")}</div>` : ""}
+            ${staffRoots.length ? `<div class="department-members">${renderChildren(staffRoots, nextPath, staffLeafGrid ? "department-grid no-connectors" : "")}</div>` : ""}
             ${subdepartments.length ? `<div class="department-subdepartments">${renderChildren(subdepartments, nextPath)}</div>` : ""}
           </div>
         ` : `<div class="department-empty">Нет сотрудников</div>`}
@@ -400,10 +438,11 @@
   function renderChildren(items, path, extraClass = "") {
     if (!items.length) return "";
     const relationClass = items.length === 1 ? "single" : "multiple";
-    return `<div class="children ${relationClass} ${extraClass}">${items.map(item => `
+    const countClass = `count-${Math.min(items.length, 3)}`;
+    return `<div class="children ${relationClass} ${countClass} ${extraClass}">${items.map(item => `
       <div class="branch">
         ${item.kind === "department-person"
-          ? renderDepartmentPerson(item.value, item.departmentId, path)
+          ? renderDepartmentPerson(item.value, item.departmentId, path, item.hiddenIds ?? new Set())
           : item.kind === "person"
           ? renderPerson(item.value, item.scopeDepartmentId ?? item.value.departmentId, path)
           : renderDepartment(item.value, path)}
@@ -453,7 +492,7 @@
     const personIds = new Set(state.people.map(item => item.id));
     const departmentIds = new Set(state.departments.map(item => item.id));
     const danglingPeople = state.people.filter(person => (person.managerId && !personIds.has(person.managerId)) || (person.departmentId && !departmentIds.has(person.departmentId)));
-    const danglingDepartments = state.departments.filter(department => (department.parentDepartmentId && !departmentIds.has(department.parentDepartmentId)) || (department.reportsToId && !personIds.has(department.reportsToId)) || (department.headId && !personIds.has(department.headId)));
+    const danglingDepartments = state.departments.filter(department => (department.parentDepartmentId && !departmentIds.has(department.parentDepartmentId)) || (department.reportsToId && !personIds.has(department.reportsToId)) || idList(department.headId).some(headId => !personIds.has(headId)));
     if (danglingPeople.length || danglingDepartments.length) warnings.push("Есть ссылки на удалённых сотрудников или отделы.");
     if (state.people.some(person => personCycle(person.id, person.managerId))) warnings.push("Обнаружен цикл в подчинении сотрудников.");
     if (state.departments.some(department => departmentCycle(department.id, department.parentDepartmentId))) warnings.push("Обнаружен цикл во вложенности отделов.");
@@ -524,7 +563,7 @@
       state.people.forEach(item => { if (item.managerId === oldId) item.managerId = newId; });
       state.departments.forEach(item => {
         if (item.reportsToId === oldId) item.reportsToId = newId;
-        if (item.headId === oldId) item.headId = newId;
+        item.headId = joinIds(idList(item.headId).map(headId => headId === oldId ? newId : headId));
       });
     } else {
       const department = state.departments.find(item => item.id === oldId);
@@ -540,7 +579,13 @@
     const entity = control.dataset.entity;
     const id = control.dataset.id;
     const field = control.dataset.field;
-    const value = text(control.value);
+    const value = control.type === "checkbox" && entity === "department" && field === "headId"
+      ? joinIds([...elements.departmentsTable.querySelectorAll('[data-entity="department"][data-field="headId"]')]
+        .filter(item => item.dataset.id === id && item.checked)
+        .map(item => item.value))
+      : control.multiple
+      ? joinIds([...control.selectedOptions].map(item => item.value))
+      : text(control.value);
     const collection = entity === "person" ? state.people : state.departments;
     const item = collection.find(record => record.id === id);
     if (!item) return render();
@@ -552,18 +597,19 @@
     else {
       if (entity === "person" && field === "departmentId") {
         state.departments.forEach(department => {
-          if (department.headId === item.id && department.id !== value) department.headId = "";
+          if (department.id !== value) department.headId = joinIds(idList(department.headId).filter(headId => headId !== item.id));
         });
       }
       item[field] = value;
       if (entity === "department" && field === "headId" && value) {
-        const head = state.people.find(person => person.id === value);
-        if (head) {
-          state.departments.forEach(department => {
-            if (department.id !== item.id && department.headId === head.id) department.headId = "";
-          });
-          head.departmentId = item.id;
-        }
+        const selectedHeadIds = idList(value);
+        state.departments.forEach(department => {
+          if (department.id !== item.id) department.headId = joinIds(idList(department.headId).filter(headId => !selectedHeadIds.includes(headId)));
+        });
+        selectedHeadIds.forEach(headId => {
+          const head = state.people.find(person => person.id === headId);
+          if (head) head.departmentId = item.id;
+        });
       }
     }
 
@@ -595,7 +641,7 @@
       state.people.forEach(person => { if (person.managerId === id) person.managerId = ""; });
       state.departments.forEach(department => {
         if (department.reportsToId === id) department.reportsToId = "";
-        if (department.headId === id) department.headId = "";
+        department.headId = joinIds(idList(department.headId).filter(headId => headId !== id));
       });
     } else {
       state.departments = state.departments.filter(department => department.id !== id);

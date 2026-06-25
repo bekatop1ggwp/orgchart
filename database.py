@@ -28,6 +28,21 @@ def _nullable(value: Any) -> str | None:
     return cleaned or None
 
 
+def _id_list(value: Any) -> list[str]:
+    seen = set()
+    result = []
+    for item in _clean(value).split(","):
+        cleaned = _clean(item)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return result
+
+
+def _join_ids(value: Any) -> str:
+    return ",".join(_id_list(value))
+
+
 def connect() -> sqlite3.Connection:
     DATA_DIR.mkdir(exist_ok=True)
     connection = sqlite3.connect(DATABASE_PATH, timeout=10)
@@ -53,8 +68,6 @@ def initialize() -> None:
                 FOREIGN KEY (parent_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
                 FOREIGN KEY (reports_to_id) REFERENCES people(id)
-                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
-                FOREIGN KEY (head_id) REFERENCES people(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
             );
 
@@ -98,7 +111,7 @@ def initialize() -> None:
             END;
             """
         )
-        migrate_department_parent_reports_constraint(connection)
+        migrate_departments_table(connection)
         connection.executescript(
             """
             CREATE INDEX IF NOT EXISTS idx_people_department ON people(department_id);
@@ -132,7 +145,7 @@ def initialize() -> None:
         reset_to_demo()
 
 
-def migrate_department_parent_reports_constraint(connection: sqlite3.Connection) -> None:
+def migrate_departments_table(connection: sqlite3.Connection) -> None:
     row = connection.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'departments'"
     ).fetchone()
@@ -147,7 +160,8 @@ def migrate_department_parent_reports_constraint(connection: sqlite3.Connection)
 
     create_sql = row[0] if row else ""
     old_constraint = "CHECK (parent_department_id IS NULL OR reports_to_id IS NULL)"
-    if old_constraint not in create_sql:
+    old_head_fk = "FOREIGN KEY (head_id) REFERENCES people(id)"
+    if old_constraint not in create_sql and old_head_fk not in create_sql:
         return
 
     connection.commit()
@@ -169,8 +183,6 @@ def migrate_department_parent_reports_constraint(connection: sqlite3.Connection)
                 FOREIGN KEY (parent_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
                 FOREIGN KEY (reports_to_id) REFERENCES people(id)
-                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
-                FOREIGN KEY (head_id) REFERENCES people(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
             );
 
@@ -223,7 +235,7 @@ def normalize_structure(payload: Any) -> dict[str, Any]:
                 "name": _clean(raw.get("name")),
                 "parentDepartmentId": _clean(raw.get("parentDepartmentId")),
                 "reportsToId": _clean(raw.get("reportsToId")),
-                "headId": _clean(raw.get("headId")),
+                "headId": _join_ids(raw.get("headId")),
             }
         )
 
@@ -268,10 +280,10 @@ def validate_structure(structure: dict[str, Any]) -> None:
             raise ValidationError(f"Родитель для отдела «{department['name']}» не найден.")
         if department["reportsToId"] and department["reportsToId"] not in people_ids:
             raise ValidationError(f"Куратор отдела «{department['name']}» не найден.")
-        if department["headId"] and department["headId"] not in people_ids:
-            raise ValidationError(f"Руководитель отдела «{department['name']}» не найден.")
-        if department["headId"]:
-            head = next(person for person in people if person["id"] == department["headId"])
+        for head_id in _id_list(department["headId"]):
+            if head_id not in people_ids:
+                raise ValidationError(f"Руководитель отдела «{department['name']}» не найден.")
+            head = next(person for person in people if person["id"] == head_id)
             if head["departmentId"] != department["id"]:
                 raise ValidationError(
                     f"Руководитель отдела «{department['name']}» должен состоять в этом отделе."

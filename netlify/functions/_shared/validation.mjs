@@ -2,6 +2,15 @@ const roles = new Set(["founder", "director", "manager", "employee"]);
 
 const clean = value => String(value ?? "").trim();
 
+function idList(value) {
+  return clean(value).split(",").map(clean).filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function joinIds(value) {
+  return idList(value).join(",");
+}
+
 function hasCycle(parentById) {
   for (const start of parentById.keys()) {
     let current = start;
@@ -43,7 +52,7 @@ export function normalizeAndValidate(payload) {
     name: clean(raw?.name),
     parentDepartmentId: clean(raw?.parentDepartmentId),
     reportsToId: clean(raw?.reportsToId),
-    headId: clean(raw?.headId)
+    headId: joinIds(raw?.headId)
   }));
 
   const ids = [...people.map(item => item.id), ...departments.map(item => item.id)];
@@ -71,11 +80,13 @@ export function normalizeAndValidate(payload) {
     if (department.reportsToId && !peopleById.has(department.reportsToId)) {
       throw new ValidationError(`Куратор отдела «${department.name}» не найден.`);
     }
-    if (department.headId && !peopleById.has(department.headId)) {
-      throw new ValidationError(`Руководитель отдела «${department.name}» не найден.`);
-    }
-    if (department.headId && peopleById.get(department.headId).departmentId !== department.id) {
-      throw new ValidationError(`Руководитель отдела «${department.name}» должен состоять в этом отделе.`);
+    for (const headId of idList(department.headId)) {
+      if (!peopleById.has(headId)) {
+        throw new ValidationError(`Руководитель отдела «${department.name}» не найден.`);
+      }
+      if (peopleById.get(headId).departmentId !== department.id) {
+        throw new ValidationError(`Руководитель отдела «${department.name}» должен состоять в этом отделе.`);
+      }
     }
   }
 

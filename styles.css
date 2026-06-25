@@ -352,6 +352,24 @@ main { display: grid; gap: 16px; padding: 16px; }
   padding: 0;
 }
 
+.department-box .children.department-grid {
+  display: grid;
+  justify-content: center;
+  min-width: 0;
+  gap: 14px 22px;
+  padding-top: 0;
+}
+
+.department-box .children.department-grid.count-1 { grid-template-columns: repeat(1, 164px); }
+.department-box .children.department-grid.count-2 { grid-template-columns: repeat(2, 164px); }
+.department-box .children.department-grid.count-3 { grid-template-columns: repeat(3, 164px); }
+
+.department-box .children.department-grid > .branch {
+  min-width: 164px;
+  width: 164px;
+  padding: 0;
+}
+
 .department-empty {
   padding-top: 14px;
   color: var(--muted);
@@ -384,6 +402,52 @@ td input, td select {
   font-size: 12px;
 }
 
+td select[multiple] {
+  min-height: 96px;
+  padding: 6px;
+}
+
+.head-checkboxes {
+  display: grid;
+  gap: 5px;
+  min-width: 220px;
+  max-height: 132px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.head-checkbox {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  color: #1d2939;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.head-checkbox input {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  accent-color: #2563eb;
+}
+
+.head-checkbox span {
+  overflow-wrap: anywhere;
+}
+
+.table-hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 td .delete-button { min-width: 32px; min-height: 32px; padding: 5px 9px; }
 .invalid-control { border-color: #f04438 !important; background: #fff5f5 !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
@@ -398,6 +462,7 @@ td .delete-button { min-width: 32px; min-height: 32px; padding: 5px 9px; }
   main { padding: 8px; }
   .chart-wrap { min-height: 360px; padding: 18px; }
   .department-box > .department-body > .department-members > .children.leaf-grid { grid-template-columns: repeat(2, 164px); }
+  .department-box .children.department-grid.count-3 { grid-template-columns: repeat(2, 164px); }
 }
 
 @media print {
