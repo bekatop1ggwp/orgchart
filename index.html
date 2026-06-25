@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Оргструктура компании</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script defer src="api.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>Оргструктура компании</h1>
+      <p>Отделы, руководители и линии подчинения</p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="light" data-action="fit-chart">Вписать схему</button>
+      <button type="button" class="secondary" data-action="export-png">PNG</button>
+      <button type="button" class="secondary" data-action="export-pdf">PDF</button>
+      <button type="button" class="danger" data-action="reset-demo">Сбросить демо</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel hierarchy-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Иерархия</h2>
+          <p id="chartSummary" class="panel-subtitle"></p>
+        </div>
+        <div class="zoom-controls" aria-label="Масштаб схемы">
+          <button type="button" class="icon-button light" data-action="zoom-out" aria-label="Уменьшить">−</button>
+          <output id="zoomValue">100%</output>
+          <button type="button" class="icon-button light" data-action="zoom-in" aria-label="Увеличить">+</button>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot founder-dot"></i>Учредитель</span>
+        <span><i class="dot director-dot"></i>Директор</span>
+        <span><i class="dot manager-dot"></i>Руководитель</span>
+        <span><i class="dot department-dot"></i>Отдел</span>
+        <span><i class="dot employee-dot"></i>Сотрудник</span>
+      </div>
+
+      <div id="dataWarnings" class="data-warnings" hidden></div>
+      <div class="chart-wrap" id="chartWrap">
+        <div id="chartStage" class="chart-stage">
+          <div id="chart" class="chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel editor-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Редактор структуры</h2>
+          <p class="panel-subtitle">Отдел определяет принадлежность, руководитель — прямую линию подчинения.</p>
+        </div>
+        <div id="saveStatus" class="save-status" role="status">SQLite</div>
+      </div>
+
+      <div class="toolbar">
+        <button type="button" data-action="add-person">+ Сотрудник</button>
+        <button type="button" data-action="add-department">+ Отдел</button>
+        <button type="button" class="secondary" data-action="export-csv">Экспорт CSV</button>
+        <label class="file-label secondary">
+          Импорт CSV
+          <input id="csvInput" type="file" accept=".csv,text/csv">
+        </label>
+      </div>
+
+      <div class="tables-grid">
+        <article class="table-card">
+          <div class="table-title">
+            <div><h3>Сотрудники</h3><small>Персональные роли и прямое подчинение</small></div>
+            <span id="peopleCount" class="count-badge"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>ФИО</th>
+                  <th>Должность</th>
+                  <th>Отдел</th>
+                  <th>Прямой руководитель</th>
+                  <th>Роль</th>
+                  <th><span class="sr-only">Действия</span></th>
+                </tr>
+              </thead>
+              <tbody id="peopleTable"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="table-card">
+          <div class="table-title">
+            <div><h3>Отделы</h3><small>Структурное вложение, куратор и руководитель</small></div>
+            <span id="departmentsCount" class="count-badge"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Название</th>
+                  <th>В составе отдела</th>
+                  <th>Кому подчиняется</th>
+                  <th>Руководитель отдела</th>
+                  <th><span class="sr-only">Действия</span></th>
+                </tr>
+              </thead>
+              <tbody id="departmentsTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

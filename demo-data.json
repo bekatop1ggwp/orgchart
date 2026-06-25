@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "people": [
+    { "id": "1", "name": "Марат Турыстаевич", "position": "Учредитель", "role": "founder", "departmentId": "", "managerId": "" },
+    { "id": "2", "name": "Еркежан Маратовна", "position": "Директор ТОО Miraas", "role": "director", "departmentId": "", "managerId": "1" },
+    { "id": "3", "name": "Қайрат Аскербекович", "position": "Директор ТОО Столичный Хлеб", "role": "director", "departmentId": "", "managerId": "1" },
+    { "id": "4", "name": "Айгрим Маратовна", "position": "Финансовый директор", "role": "manager", "departmentId": "", "managerId": "1" },
+    { "id": "5", "name": "Батыр Амирович", "position": "Заместитель директора", "role": "director", "departmentId": "", "managerId": "2" },
+    { "id": "6", "name": "Мубарахан Турыстаевич", "position": "Коммерческий директор", "role": "director", "departmentId": "", "managerId": "2" },
+    { "id": "14", "name": "Магжан", "position": "Заместитель директора", "role": "director", "departmentId": "", "managerId": "2" },
+    { "id": "21", "name": "Бекзат", "position": "Главный диспетчер", "role": "manager", "departmentId": "20", "managerId": "" },
+    { "id": "22", "name": "Аружан", "position": "Универсал-диспетчер", "role": "employee", "departmentId": "20", "managerId": "21" },
+    { "id": "23", "name": "Айым", "position": "Диспетчер A категории", "role": "employee", "departmentId": "20", "managerId": "21" },
+    { "id": "24", "name": "Зарина", "position": "Диспетчер БС категории", "role": "employee", "departmentId": "20", "managerId": "21" },
+    { "id": "31", "name": "Зоя Евгеньевна", "position": "Руководитель отдела продаж", "role": "manager", "departmentId": "30", "managerId": "" },
+    { "id": "32", "name": "Сауле Рахимова", "position": "Супервайзер A категории", "role": "manager", "departmentId": "30", "managerId": "31" },
+    { "id": "33", "name": "Мерчендайзеры", "position": "A категория", "role": "employee", "departmentId": "30", "managerId": "32" },
+    { "id": "41", "name": "Бектас", "position": "Проектный менеджер", "role": "employee", "departmentId": "40", "managerId": "" },
+    { "id": "42", "name": "Алдияр", "position": "Проектный менеджер", "role": "employee", "departmentId": "40", "managerId": "" },
+    { "id": "43", "name": "Саур", "position": "Проектный менеджер", "role": "employee", "departmentId": "40", "managerId": "" },
+    { "id": "44", "name": "Жандос", "position": "Операционный менеджер", "role": "employee", "departmentId": "40", "managerId": "" },
+    { "id": "45", "name": "Айторе", "position": "Стажёр", "role": "employee", "departmentId": "40", "managerId": "" },
+    { "id": "46", "name": "Шыңғыс", "position": "Разработчик", "role": "employee", "departmentId": "40", "managerId": "" }
+  ],
+  "departments": [
+    { "id": "20", "name": "Логистика", "parentDepartmentId": "", "reportsToId": "5", "headId": "21" },
+    { "id": "30", "name": "Отдел продаж", "parentDepartmentId": "", "reportsToId": "6", "headId": "31" },
+    { "id": "40", "name": "Проектный офис", "parentDepartmentId": "", "reportsToId": "14", "headId": "" },
+    { "id": "50", "name": "Бухгалтерия", "parentDepartmentId": "", "reportsToId": "4", "headId": "" }
+  ]
+}
