@@ -233,159 +233,140 @@ main { display: grid; gap: 16px; padding: 16px; }
 .children.no-connectors > .branch::before,
 .children.no-connectors > .branch::after { display: none; }
 
-.vertical-root-list {
+.chart-vertical .v-forest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 56px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.chart-vertical .v-root,
+.chart-vertical .v-node,
+.chart-vertical .v-branch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  position: relative;
+}
+
+.chart-vertical .v-children {
+  --v-depth: 30px;
+  --v-mid: 15px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   gap: 34px;
   width: max-content;
-  min-width: 100%;
-}
-
-.vertical-root,
-.vertical-node {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: max-content;
+  padding-top: var(--v-depth);
   position: relative;
 }
 
-.vertical-sections {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  width: max-content;
-  padding-top: 24px;
-  position: relative;
-}
-
-.vertical-sections::before {
+.chart-vertical .v-children::before {
   content: "";
   position: absolute;
   top: 0;
   left: 50%;
   width: 2px;
-  height: 24px;
+  height: var(--v-depth);
   transform: translateX(-50%);
   background: var(--line);
 }
 
-.vertical-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: max-content;
-  padding: 10px 12px 12px;
-  border: 1px solid #edf1f6;
-  border-radius: 10px;
-  background: rgba(248, 250, 252, .72);
-  position: relative;
+.chart-vertical .v-children.multiple::before {
+  height: var(--v-mid);
 }
 
-.vertical-group + .vertical-group::before {
+.chart-vertical .v-children > .v-branch {
+  padding: 0 4px;
+}
+
+.chart-vertical .v-children > .v-branch::before {
   content: "";
   position: absolute;
-  top: -18px;
+  top: calc(-1 * var(--v-mid));
   left: 50%;
   width: 2px;
-  height: 18px;
+  height: var(--v-mid);
   transform: translateX(-50%);
   background: var(--line);
 }
 
-.vertical-group-label {
-  align-self: flex-start;
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-
-.vertical-group-items {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 18px;
-  width: max-content;
-  position: relative;
-}
-
-.vertical-group-items::before {
+.chart-vertical .v-children.multiple > .v-branch::after {
   content: "";
   position: absolute;
-  top: -10px;
-  left: 50%;
-  width: 2px;
-  height: 10px;
-  transform: translateX(-50%);
-  background: var(--line);
-}
-
-.vertical-group.multiple .vertical-group-items::before {
-  height: 0;
-}
-
-.vertical-group.multiple .vertical-group-items::after {
-  content: "";
-  position: absolute;
-  top: -10px;
-  left: 94px;
-  right: 94px;
+  top: calc(-1 * var(--v-mid));
+  left: -17px;
+  right: -17px;
   height: 2px;
   background: var(--line);
 }
 
-.vertical-group-item,
-.vertical-grid-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-}
-
-.vertical-group.multiple .vertical-group-item::before,
-.vertical-group.multiple .vertical-grid-item::before {
-  content: "";
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  width: 2px;
-  height: 10px;
-  transform: translateX(-50%);
-  background: var(--line);
-}
-
-.vertical-group.is-grid .vertical-group-items {
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.vertical-grid-row {
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-}
-
-.vertical-group.is-grid .vertical-group-items::after,
-.vertical-group.is-grid .vertical-grid-item::before {
+.chart-vertical .v-children.single > .v-branch::before,
+.chart-vertical .v-children.single > .v-branch::after {
   display: none;
 }
 
-.vertical-group.is-grid .vertical-group-items {
-  padding: 10px 12px;
-  border: 1px dashed #d8e0ec;
-  border-radius: 10px;
-  background: #fff;
+.chart-vertical .v-children.multiple > .v-branch:first-child::after {
+  left: 50%;
 }
 
-.vertical-group.tone-departments {
-  border-color: rgba(20, 184, 166, .24);
-  background: rgba(243, 255, 253, .72);
+.chart-vertical .v-children.multiple > .v-branch:last-child::after {
+  right: 50%;
+}
+
+.chart-vertical .v-children.no-parent {
+  padding-top: 0;
+}
+
+.chart-vertical .v-children.no-parent::before,
+.chart-vertical .v-children.no-parent > .v-branch::before,
+.chart-vertical .v-children.no-parent > .v-branch::after {
+  display: none;
+}
+
+.chart-vertical .v-department-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding-top: 16px;
+}
+
+.chart-vertical .v-person-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+}
+
+.chart-vertical .v-list-item {
+  display: flex;
+  justify-content: center;
+}
+
+.chart-vertical .department-box {
+  min-width: 250px;
+  max-width: none;
+  padding: 14px 16px;
+  border-radius: 14px;
+}
+
+.chart-vertical .department-header {
+  padding: 8px 10px 11px;
+  margin: -4px -6px 0;
+  border-radius: 10px 10px 0 0;
+}
+
+.chart-vertical .department-name {
+  font-size: 14px;
+}
+
+.chart-vertical .department-meta {
+  font-size: 11px;
 }
 
 .org-node {

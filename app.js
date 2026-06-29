@@ -573,44 +573,6 @@
       </div>`).join("")}</div>`;
   }
 
-  function renderVerticalSections(groups) {
-    const visibleGroups = groups.filter(group => group.items.length);
-    if (!visibleGroups.length) return "";
-    return `
-      <div class="vertical-sections">
-        ${visibleGroups.map(group => renderVerticalGroup(group)).join("")}
-      </div>
-    `;
-  }
-
-  function renderVerticalGroup({ title, items, path, layout = "row", tone = "people" }) {
-    const countClass = items.length === 1 ? "single" : "multiple";
-    return `
-      <section class="vertical-group ${countClass} is-${layout} tone-${tone}">
-        <div class="vertical-group-label">${escapeHtml(title)}</div>
-        <div class="vertical-group-items">
-          ${layout === "grid" ? renderVerticalGridItems(items, path) : items.map(item => `
-            <div class="vertical-group-item">
-              ${renderVerticalItem(item, path)}
-            </div>
-          `).join("")}
-        </div>
-      </section>
-    `;
-  }
-
-  function renderVerticalGridItems(items, path) {
-    return layoutDepartmentMembers(items).map(row => `
-      <div class="vertical-grid-row">
-        ${row.map(item => `
-          <div class="vertical-grid-item">
-            ${renderVerticalItem(item, path)}
-          </div>
-        `).join("")}
-      </div>
-    `).join("");
-  }
-
   function renderVerticalItem(item, path) {
     if (item.kind === "department-person") {
       return renderVerticalDepartmentPerson(item.value, item.departmentId, path, item.hiddenIds ?? new Set());
@@ -621,19 +583,26 @@
     return renderVerticalDepartment(item.value, path);
   }
 
-  function verticalPeopleLayout(items, departmentId = "", hiddenIds = new Set()) {
-    if (items.length <= 1) return "row";
-    const allLeafPeople = items.every(item => {
-      if (item.kind === "department-person") {
-        return !hasDepartmentPersonDescendants(item.value.id, item.departmentId, item.hiddenIds ?? hiddenIds);
-      }
-      if (item.kind === "person") {
-        return !state.people.some(child => child.managerId === item.value.id && child.departmentId === (item.scopeDepartmentId ?? departmentId))
-          && !state.departments.some(department => !department.parentDepartmentId && department.reportsToId === item.value.id);
-      }
-      return false;
-    });
-    return allLeafPeople ? "grid" : "row";
+  function renderVerticalChildren(items, path, extraClass = "") {
+    if (!items.length) return "";
+    return `
+      <div class="v-children ${items.length === 1 ? "single" : "multiple"} ${extraClass}">
+        ${items.map(item => `
+          <div class="v-branch">
+            ${renderVerticalItem(item, path)}
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function renderVerticalList(items, path) {
+    if (!items.length) return "";
+    return `
+      <div class="v-person-list">
+        ${items.map(item => `<div class="v-list-item">${renderVerticalItem(item, path)}</div>`).join("")}
+      </div>
+    `;
   }
 
   function renderVerticalPerson(person, scopeDepartmentId = "", path = new Set()) {
@@ -648,14 +617,12 @@
       .filter(department => !department.parentDepartmentId && department.reportsToId === person.id)
       .sort(compareByName)
       .map(department => ({ kind: "department", value: department }));
+    const descendants = [...people, ...departments];
 
     return `
-      <div class="vertical-node vertical-person-node">
+      <div class="v-node v-person-node">
         ${personCard(person)}
-        ${renderVerticalSections([
-          { title: "Прямые подчиненные", items: people, path: nextPath, layout: verticalPeopleLayout(people, scopeDepartmentId), tone: "people" },
-          { title: "Курируемые отделы", items: departments, path: nextPath, layout: "row", tone: "departments" }
-        ])}
+        ${renderVerticalChildren(descendants, nextPath)}
       </div>
     `;
   }
@@ -672,14 +639,12 @@
       .filter(department => department.parentDepartmentId === departmentId && department.reportsToId === person.id)
       .sort(compareByName)
       .map(department => ({ kind: "department", value: department }));
+    const descendants = [...people, ...departments];
 
     return `
-      <div class="vertical-node vertical-person-node">
+      <div class="v-node v-person-node">
         ${personCard(person)}
-        ${renderVerticalSections([
-          { title: "Прямые подчиненные", items: people, path: nextPath, layout: verticalPeopleLayout(people, departmentId, hiddenIds), tone: "people" },
-          { title: "Курируемые подразделения", items: departments, path: nextPath, layout: "row", tone: "departments" }
-        ])}
+        ${renderVerticalChildren(descendants, nextPath)}
       </div>
     `;
   }
@@ -712,11 +677,12 @@
       .filter(item => !item.reportsToId || !memberIds.has(item.reportsToId))
       .sort(compareByName)
       .map(item => ({ kind: "department", value: item }));
+    const linkedBranches = [...headBranch, ...subdepartments];
     const isCollapsed = collapsedDepartmentIds.has(department.id);
     const totalMembers = departmentMemberCount(department.id);
 
     return `
-      <div class="vertical-node">
+      <div class="v-node v-department-node">
         <div class="department-box ${isCollapsed ? "is-collapsed" : ""}">
           <div class="department-header">
             <div class="department-drag" aria-hidden="true">⋮⋮</div>
@@ -736,11 +702,12 @@
               title="${isCollapsed ? "Развернуть" : "Свернуть"}"
             >${isCollapsed ? "+" : "−"}</button>
           </div>
-          ${isCollapsed ? departmentSummary(department, members) : (headBranch.length || staffRoots.length || subdepartments.length) ? renderVerticalSections([
-            { title: "Руководитель отдела", items: headBranch, path: nextPath, layout: "row", tone: "people" },
-            { title: "Сотрудники", items: staffRoots, path: nextPath, layout: verticalPeopleLayout(staffRoots, department.id), tone: "people" },
-            { title: "Подразделения", items: subdepartments, path: nextPath, layout: "row", tone: "departments" }
-          ]) : `<div class="department-empty">Нет сотрудников</div>`}
+          ${isCollapsed ? departmentSummary(department, members) : (headBranch.length || staffRoots.length || subdepartments.length) ? `
+            <div class="v-department-body">
+              ${linkedBranches.length ? renderVerticalChildren(linkedBranches, nextPath, "no-parent") : ""}
+              ${staffRoots.length ? renderVerticalList(staffRoots, nextPath) : ""}
+            </div>
+          ` : `<div class="department-empty">Нет сотрудников</div>`}
         </div>
       </div>
     `;
@@ -771,7 +738,7 @@
     if (!roots.length) {
       elements.chart.innerHTML = `<div class="empty-state">Добавьте сотрудника или отдел верхнего уровня.</div>`;
     } else if (chartLayout === "vertical") {
-      elements.chart.innerHTML = `<div class="vertical-root-list">${roots.map(item => `<div class="vertical-root">${renderVerticalItem(item, new Set(), 0)}</div>`).join("")}</div>`;
+      elements.chart.innerHTML = `<div class="v-forest">${roots.map(item => `<div class="v-root">${renderVerticalItem(item, new Set())}</div>`).join("")}</div>`;
     } else {
       elements.chart.innerHTML = `<div class="root-list">${roots.map(item => `<div class="branch ${item.kind === "department" ? "department-branch" : "person-branch"}">${item.kind === "person" ? renderPerson(item.value, "") : renderDepartment(item.value)}</div>`).join("")}</div>`;
     }
@@ -1044,8 +1011,36 @@
     const previousZoom = zoom;
     setZoom(1, false);
     await new Promise(requestAnimationFrame);
+    const previousTransform = elements.chart.style.transform;
+    const previousLeft = elements.chart.style.left;
     try {
-      const canvas = await window.html2canvas(elements.chart, { backgroundColor: "#ffffff", scale: 2, useCORS: true });
+      const width = Math.ceil(elements.chart.scrollWidth);
+      const height = Math.ceil(elements.chart.scrollHeight);
+      elements.chart.style.transform = "none";
+      elements.chart.style.left = "0";
+      await new Promise(requestAnimationFrame);
+      const canvas = await window.html2canvas(elements.chart, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+        scrollX: 0,
+        scrollY: 0,
+        onclone: doc => {
+          const chart = doc.getElementById("chart");
+          if (!chart) return;
+          chart.style.transform = "none";
+          chart.style.left = "0";
+          chart.style.background = "#ffffff";
+          chart.querySelectorAll("*").forEach(node => {
+            node.style.boxShadow = "none";
+            node.style.filter = "none";
+          });
+        }
+      });
       if (format === "png") {
         canvas.toBlob(blob => blob && downloadBlob(blob, "org-chart.png"), "image/png");
       } else {
@@ -1056,6 +1051,8 @@
         pdf.save("org-chart.pdf");
       }
     } finally {
+      elements.chart.style.transform = previousTransform;
+      elements.chart.style.left = previousLeft;
       zoom = previousZoom;
       applyZoom();
     }
