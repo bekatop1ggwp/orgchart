@@ -32,6 +32,8 @@
   };
 
   let state = { version: 2, people: [], departments: [] };
+  let collapsedDepartmentIds = new Set();
+  let chartLayout = "horizontal";
   let zoom = 1;
   let autoFit = true;
   let fitFrame = 0;
@@ -402,10 +404,49 @@
       ...children.map(child => ({ kind: "person", value: child })),
       ...departments.map(department => ({ kind: "department", value: department }))
     ];
-
     return `
       ${personCard(person)}
       ${renderChildren(descendants, nextPath)}
+    `;
+  }
+
+  function hasDepartmentPersonDescendants(personId, departmentId, hiddenIds = new Set()) {
+    return state.people.some(child => child.departmentId === departmentId && child.managerId === personId && !hiddenIds.has(child.id))
+      || state.departments.some(department => department.parentDepartmentId === departmentId && department.reportsToId === personId);
+  }
+
+  function departmentMemberCount(departmentId, path = new Set()) {
+    if (path.has(departmentId)) return 0;
+    const nextPath = new Set(path).add(departmentId);
+    const directCount = state.people.filter(person => person.departmentId === departmentId).length;
+    const childCount = state.departments
+      .filter(department => department.parentDepartmentId === departmentId)
+      .reduce((total, department) => total + departmentMemberCount(department.id, nextPath), 0);
+    return directCount + childCount;
+  }
+
+  function departmentSummary(department, members) {
+    const headNames = idList(department.headId)
+      .map(headId => state.people.find(person => person.id === headId)?.name)
+      .filter(Boolean);
+    const subdepartmentNames = state.departments
+      .filter(item => item.parentDepartmentId === department.id)
+      .sort(compareByName)
+      .map(item => item.name || "Отдел без названия");
+    const fallbackHead = members.find(person => !person.managerId || !members.some(member => member.id === person.managerId))?.name;
+    const leaders = headNames.length ? headNames : (fallbackHead ? [fallbackHead] : []);
+
+    return `
+      <div class="department-summary">
+        <div class="department-summary-row">
+          <span class="department-summary-label">Руководитель</span>
+          <span class="department-summary-value">${leaders.length ? leaders.map(escapeHtml).join(", ") : "Не указан"}</span>
+        </div>
+        <div class="department-summary-row">
+          <span class="department-summary-label">Подразделения</span>
+          <span class="department-summary-value">${subdepartmentNames.length ? subdepartmentNames.map(escapeHtml).join(", ") : "Нет"}</span>
+        </div>
+      </div>
     `;
   }
 
@@ -417,11 +458,19 @@
       .filter(child => child.departmentId === departmentId && child.managerId === person.id && !hiddenIds.has(child.id))
       .sort(compareByName)
       .map(child => ({ kind: "department-person", value: child, departmentId, hiddenIds }));
-    const compactGrid = children.length > 3 && children.every(item => !state.people.some(child => child.departmentId === departmentId && child.managerId === item.value.id && !hiddenIds.has(child.id)));
+    const childDepartments = state.departments
+      .filter(department => department.parentDepartmentId === departmentId && department.reportsToId === person.id)
+      .sort(compareByName)
+      .map(department => ({ kind: "department", value: department }));
+    const descendants = [
+      ...children,
+      ...childDepartments
+    ];
+    const compactGrid = !childDepartments.length && children.length > 3 && children.every(item => !hasDepartmentPersonDescendants(item.value.id, departmentId, hiddenIds));
 
     return `
       ${personCard(person)}
-      ${compactGrid ? renderDepartmentRows(children, nextPath, "with-parent-line") : renderChildren(children, nextPath)}
+      ${compactGrid ? renderDepartmentRows(children, nextPath, "with-parent-line") : renderChildren(descendants, nextPath)}
     `;
   }
 
@@ -449,28 +498,40 @@
       .map(person => ({ kind: "department-person", value: person, departmentId: department.id }));
     const subdepartments = state.departments
       .filter(item => item.parentDepartmentId === department.id)
+      .filter(item => !item.reportsToId || !memberIds.has(item.reportsToId))
       .sort(compareByName)
       .map(item => ({ kind: "department", value: item }));
-    const headLeafGrid = headBranch.length > 1 && headBranch.every(item => !state.people.some(child => child.managerId === item.value.id && child.departmentId === department.id));
-    const staffLeafGrid = staffRoots.length > 3 && staffRoots.every(item => !state.people.some(child => child.managerId === item.value.id && child.departmentId === department.id));
+    const headLeafGrid = headBranch.length > 1 && headBranch.every(item => !hasDepartmentPersonDescendants(item.value.id, department.id, item.hiddenIds ?? new Set()));
+    const staffLeafGrid = staffRoots.length > 3 && staffRoots.every(item => !hasDepartmentPersonDescendants(item.value.id, department.id));
     const hasBody = headBranch.length || staffRoots.length || subdepartments.length;
+    const isCollapsed = collapsedDepartmentIds.has(department.id);
+    const totalMembers = departmentMemberCount(department.id);
 
     return `
-      <div class="department-box">
+      <div class="department-box ${isCollapsed ? "is-collapsed" : ""}">
         <div class="department-header">
           <div class="department-drag" aria-hidden="true">⋮⋮</div>
           <div class="department-info">
             <div class="department-name">${escapeHtml(department.name || "Отдел без названия")}</div>
             <div class="department-meta">
-              <span class="department-badge">${members.length} ${plural(members.length, "сотрудник", "сотрудника", "сотрудников")}</span>
+              <span class="department-badge">${totalMembers} ${plural(totalMembers, "сотрудник", "сотрудника", "сотрудников")}</span>
             </div>
           </div>
+          <button
+            type="button"
+            class="department-toggle"
+            data-action="toggle-department"
+            data-department-id="${escapeHtml(department.id)}"
+            aria-expanded="${isCollapsed ? "false" : "true"}"
+            aria-label="${isCollapsed ? "Развернуть" : "Свернуть"} ${escapeHtml(department.name || "отдел")}"
+            title="${isCollapsed ? "Развернуть" : "Свернуть"}"
+          >${isCollapsed ? "+" : "−"}</button>
         </div>
-        ${hasBody ? `
+        ${isCollapsed ? departmentSummary(department, members) : hasBody ? `
           <div class="department-body">
             ${headBranch.length ? `<div class="department-head-person">${headLeafGrid ? renderDepartmentRows(headBranch, nextPath) : renderChildren(headBranch, nextPath, "no-connectors")}</div>` : ""}
             ${staffRoots.length ? `<div class="department-members">${staffLeafGrid ? renderDepartmentRows(staffRoots, nextPath) : renderChildren(staffRoots, nextPath, "no-connectors")}</div>` : ""}
-            ${subdepartments.length ? `<div class="department-subdepartments">${renderChildren(subdepartments, nextPath)}</div>` : ""}
+            ${subdepartments.length ? `<div class="department-subdepartments">${renderDepartmentRows(subdepartments, nextPath)}</div>` : ""}
           </div>
         ` : `<div class="department-empty">Нет сотрудников</div>`}
       </div>
@@ -503,13 +564,186 @@
     const relationClass = items.length === 1 ? "single" : "multiple";
     const countClass = `count-${Math.min(items.length, 3)}`;
     return `<div class="children ${relationClass} ${countClass} ${extraClass}">${items.map(item => `
-      <div class="branch">
+      <div class="branch ${item.kind === "department" ? "department-branch" : "person-branch"}">
         ${item.kind === "department-person"
           ? renderDepartmentPerson(item.value, item.departmentId, path, item.hiddenIds ?? new Set())
           : item.kind === "person"
           ? renderPerson(item.value, item.scopeDepartmentId ?? item.value.departmentId, path)
           : renderDepartment(item.value, path)}
       </div>`).join("")}</div>`;
+  }
+
+  function renderVerticalSections(groups) {
+    const visibleGroups = groups.filter(group => group.items.length);
+    if (!visibleGroups.length) return "";
+    return `
+      <div class="vertical-sections">
+        ${visibleGroups.map(group => renderVerticalGroup(group)).join("")}
+      </div>
+    `;
+  }
+
+  function renderVerticalGroup({ title, items, path, layout = "row", tone = "people" }) {
+    const countClass = items.length === 1 ? "single" : "multiple";
+    return `
+      <section class="vertical-group ${countClass} is-${layout} tone-${tone}">
+        <div class="vertical-group-label">${escapeHtml(title)}</div>
+        <div class="vertical-group-items">
+          ${layout === "grid" ? renderVerticalGridItems(items, path) : items.map(item => `
+            <div class="vertical-group-item">
+              ${renderVerticalItem(item, path)}
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderVerticalGridItems(items, path) {
+    return layoutDepartmentMembers(items).map(row => `
+      <div class="vertical-grid-row">
+        ${row.map(item => `
+          <div class="vertical-grid-item">
+            ${renderVerticalItem(item, path)}
+          </div>
+        `).join("")}
+      </div>
+    `).join("");
+  }
+
+  function renderVerticalItem(item, path) {
+    if (item.kind === "department-person") {
+      return renderVerticalDepartmentPerson(item.value, item.departmentId, path, item.hiddenIds ?? new Set());
+    }
+    if (item.kind === "person") {
+      return renderVerticalPerson(item.value, item.scopeDepartmentId ?? item.value.departmentId ?? "", path);
+    }
+    return renderVerticalDepartment(item.value, path);
+  }
+
+  function verticalPeopleLayout(items, departmentId = "", hiddenIds = new Set()) {
+    if (items.length <= 1) return "row";
+    const allLeafPeople = items.every(item => {
+      if (item.kind === "department-person") {
+        return !hasDepartmentPersonDescendants(item.value.id, item.departmentId, item.hiddenIds ?? hiddenIds);
+      }
+      if (item.kind === "person") {
+        return !state.people.some(child => child.managerId === item.value.id && child.departmentId === (item.scopeDepartmentId ?? departmentId))
+          && !state.departments.some(department => !department.parentDepartmentId && department.reportsToId === item.value.id);
+      }
+      return false;
+    });
+    return allLeafPeople ? "grid" : "row";
+  }
+
+  function renderVerticalPerson(person, scopeDepartmentId = "", path = new Set()) {
+    const key = `vertical-person:${scopeDepartmentId}:${person.id}`;
+    if (path.has(key)) return `<div class="org-node employee"><div class="name">Цикл: ${escapeHtml(person.name)}</div></div>`;
+    const nextPath = new Set(path).add(key);
+    const people = state.people
+      .filter(child => child.managerId === person.id && child.departmentId === scopeDepartmentId)
+      .sort(compareByName)
+      .map(child => ({ kind: "person", value: child, scopeDepartmentId }));
+    const departments = state.departments
+      .filter(department => !department.parentDepartmentId && department.reportsToId === person.id)
+      .sort(compareByName)
+      .map(department => ({ kind: "department", value: department }));
+
+    return `
+      <div class="vertical-node vertical-person-node">
+        ${personCard(person)}
+        ${renderVerticalSections([
+          { title: "Прямые подчиненные", items: people, path: nextPath, layout: verticalPeopleLayout(people, scopeDepartmentId), tone: "people" },
+          { title: "Курируемые отделы", items: departments, path: nextPath, layout: "row", tone: "departments" }
+        ])}
+      </div>
+    `;
+  }
+
+  function renderVerticalDepartmentPerson(person, departmentId, path = new Set(), hiddenIds = new Set()) {
+    const key = `vertical-department-person:${departmentId}:${person.id}`;
+    if (path.has(key)) return `<div class="org-node employee"><div class="name">Цикл: ${escapeHtml(person.name)}</div></div>`;
+    const nextPath = new Set(path).add(key);
+    const people = state.people
+      .filter(child => child.departmentId === departmentId && child.managerId === person.id && !hiddenIds.has(child.id))
+      .sort(compareByName)
+      .map(child => ({ kind: "department-person", value: child, departmentId, hiddenIds }));
+    const departments = state.departments
+      .filter(department => department.parentDepartmentId === departmentId && department.reportsToId === person.id)
+      .sort(compareByName)
+      .map(department => ({ kind: "department", value: department }));
+
+    return `
+      <div class="vertical-node vertical-person-node">
+        ${personCard(person)}
+        ${renderVerticalSections([
+          { title: "Прямые подчиненные", items: people, path: nextPath, layout: verticalPeopleLayout(people, departmentId, hiddenIds), tone: "people" },
+          { title: "Курируемые подразделения", items: departments, path: nextPath, layout: "row", tone: "departments" }
+        ])}
+      </div>
+    `;
+  }
+
+  function renderVerticalDepartment(department, path = new Set()) {
+    const key = `vertical-department:${department.id}`;
+    if (path.has(key)) return `
+      <div class="department-box">
+        <div class="department-header">
+          <div class="department-info">
+            <div class="department-name">Цикл: ${escapeHtml(department.name)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const nextPath = new Set(path).add(key);
+    const members = state.people.filter(person => person.departmentId === department.id).sort(compareByName);
+    const memberIds = new Set(members.map(person => person.id));
+    const headIds = idSet(department.headId);
+    const headBranch = members
+      .filter(person => headIds.has(person.id))
+      .map(person => ({ kind: "department-person", value: person, departmentId: department.id, hiddenIds: headIds }));
+    const staffRoots = members
+      .filter(person => !headIds.has(person.id))
+      .filter(person => !person.managerId || !memberIds.has(person.managerId))
+      .map(person => ({ kind: "department-person", value: person, departmentId: department.id }));
+    const subdepartments = state.departments
+      .filter(item => item.parentDepartmentId === department.id)
+      .filter(item => !item.reportsToId || !memberIds.has(item.reportsToId))
+      .sort(compareByName)
+      .map(item => ({ kind: "department", value: item }));
+    const isCollapsed = collapsedDepartmentIds.has(department.id);
+    const totalMembers = departmentMemberCount(department.id);
+
+    return `
+      <div class="vertical-node">
+        <div class="department-box ${isCollapsed ? "is-collapsed" : ""}">
+          <div class="department-header">
+            <div class="department-drag" aria-hidden="true">⋮⋮</div>
+            <div class="department-info">
+              <div class="department-name">${escapeHtml(department.name || "Отдел без названия")}</div>
+              <div class="department-meta">
+                <span class="department-badge">${totalMembers} ${plural(totalMembers, "сотрудник", "сотрудника", "сотрудников")}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="department-toggle"
+              data-action="toggle-department"
+              data-department-id="${escapeHtml(department.id)}"
+              aria-expanded="${isCollapsed ? "false" : "true"}"
+              aria-label="${isCollapsed ? "Развернуть" : "Свернуть"} ${escapeHtml(department.name || "отдел")}"
+              title="${isCollapsed ? "Развернуть" : "Свернуть"}"
+            >${isCollapsed ? "+" : "−"}</button>
+          </div>
+          ${isCollapsed ? departmentSummary(department, members) : (headBranch.length || staffRoots.length || subdepartments.length) ? renderVerticalSections([
+            { title: "Руководитель отдела", items: headBranch, path: nextPath, layout: "row", tone: "people" },
+            { title: "Сотрудники", items: staffRoots, path: nextPath, layout: verticalPeopleLayout(staffRoots, department.id), tone: "people" },
+            { title: "Подразделения", items: subdepartments, path: nextPath, layout: "row", tone: "departments" }
+          ]) : `<div class="department-empty">Нет сотрудников</div>`}
+        </div>
+      </div>
+    `;
   }
 
   function plural(number, one, few, many) {
@@ -533,11 +767,19 @@
 
   function renderChart() {
     const roots = rootItems();
-    elements.chart.innerHTML = roots.length
-      ? `<div class="root-list">${roots.map(item => `<div class="branch">${item.kind === "person" ? renderPerson(item.value, "") : renderDepartment(item.value)}</div>`).join("")}</div>`
-      : `<div class="empty-state">Добавьте сотрудника или отдел верхнего уровня.</div>`;
+    elements.chart.className = `chart chart-${chartLayout}`;
+    if (!roots.length) {
+      elements.chart.innerHTML = `<div class="empty-state">Добавьте сотрудника или отдел верхнего уровня.</div>`;
+    } else if (chartLayout === "vertical") {
+      elements.chart.innerHTML = `<div class="vertical-root-list">${roots.map(item => `<div class="vertical-root">${renderVerticalItem(item, new Set(), 0)}</div>`).join("")}</div>`;
+    } else {
+      elements.chart.innerHTML = `<div class="root-list">${roots.map(item => `<div class="branch ${item.kind === "department" ? "department-branch" : "person-branch"}">${item.kind === "person" ? renderPerson(item.value, "") : renderDepartment(item.value)}</div>`).join("")}</div>`;
+    }
 
     elements.chartSummary.textContent = `${state.people.length} ${plural(state.people.length, "сотрудник", "сотрудника", "сотрудников")} · ${state.departments.length} ${plural(state.departments.length, "отдел", "отдела", "отделов")}`;
+    document.querySelectorAll("[data-layout]").forEach(button => {
+      button.classList.toggle("is-active", button.dataset.layout === chartLayout);
+    });
     renderWarnings();
     applyZoom();
     if (autoFit) {
@@ -656,10 +898,10 @@
     let error = "";
     if (field === "id") error = updateId(entity, id, value);
     else if (entity === "person" && field === "managerId" && personCycle(id, value)) error = "Нельзя назначить подчинённого руководителем: получится цикл.";
-    else if (entity === "person" && field === "managerId" && value) {
+    else if (entity === "person" && field === "managerId" && value && (() => {
       const manager = state.people.find(person => person.id === value);
-      if (!manager || manager.departmentId !== item.departmentId) error = "Прямой руководитель должен быть сотрудником того же отдела.";
-    }
+      return !manager || manager.departmentId !== item.departmentId;
+    })()) error = "Прямой руководитель должен быть сотрудником того же отдела.";
     else if (entity === "department" && field === "parentDepartmentId" && departmentCycle(id, value)) error = "Нельзя вложить отдел в самого себя или его дочерний отдел.";
     else {
       if (entity === "person" && field === "departmentId") {
@@ -838,6 +1080,29 @@
     renderChart();
   }
 
+  function toggleDepartment(departmentId) {
+    if (!departmentId) return;
+    if (collapsedDepartmentIds.has(departmentId)) collapsedDepartmentIds.delete(departmentId);
+    else collapsedDepartmentIds.add(departmentId);
+    autoFit = true;
+    renderChart();
+  }
+
+  function setAllDepartmentsCollapsed(isCollapsed) {
+    collapsedDepartmentIds = isCollapsed
+      ? new Set(state.departments.map(department => department.id))
+      : new Set();
+    autoFit = true;
+    renderChart();
+  }
+
+  function setChartLayout(layout) {
+    if (!["horizontal", "vertical"].includes(layout)) return;
+    chartLayout = layout;
+    autoFit = true;
+    renderChart();
+  }
+
   document.addEventListener("change", event => {
     const control = event.target.closest("[data-entity][data-field]");
     if (control) handleFieldChange(control);
@@ -857,6 +1122,10 @@
     else if (action === "export-png") exportImage("png");
     else if (action === "export-pdf") exportImage("pdf");
     else if (action === "reset-demo") resetDemo();
+    else if (action === "toggle-department") toggleDepartment(event.target.closest("[data-department-id]")?.dataset.departmentId || "");
+    else if (action === "expand-all-departments") setAllDepartmentsCollapsed(false);
+    else if (action === "collapse-all-departments") setAllDepartmentsCollapsed(true);
+    else if (action === "set-layout") setChartLayout(event.target.closest("[data-layout]")?.dataset.layout || "horizontal");
   });
 
   elements.csvInput.addEventListener("change", event => importCsv(event.target.files?.[0]));

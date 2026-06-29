@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "dev": "netlify dev",
+    "dev": "python server.py",
+    "netlify:dev": "netlify dev",
     "deploy": "netlify deploy",
     "deploy:prod": "netlify deploy --prod"
   },
