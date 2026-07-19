@@ -28,6 +28,16 @@ def _nullable(value: Any) -> str | None:
     return cleaned or None
 
 
+def _nullable_int(value: Any) -> int | None:
+    cleaned = _clean(value)
+    if not cleaned:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError:
+        return None
+
+
 def _id_list(value: Any) -> list[str]:
     seen = set()
     result = []
@@ -61,13 +71,18 @@ def initialize() -> None:
             CREATE TABLE IF NOT EXISTS departments (
                 id TEXT PRIMARY KEY NOT NULL CHECK (length(trim(id)) > 0),
                 name TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER,
                 parent_department_id TEXT,
                 reports_to_id TEXT,
+                reports_to_department_id TEXT,
                 head_id TEXT,
                 CHECK (parent_department_id IS NULL OR parent_department_id <> id),
+                CHECK (reports_to_department_id IS NULL OR reports_to_department_id <> id),
                 FOREIGN KEY (parent_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
                 FOREIGN KEY (reports_to_id) REFERENCES people(id)
+                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+                FOREIGN KEY (reports_to_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
             );
 
@@ -75,14 +90,15 @@ def initialize() -> None:
                 id TEXT PRIMARY KEY NOT NULL CHECK (length(trim(id)) > 0),
                 name TEXT NOT NULL DEFAULT '',
                 position TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER,
                 role TEXT NOT NULL DEFAULT 'employee'
                     CHECK (role IN ('founder', 'director', 'manager', 'employee')),
                 department_id TEXT,
                 manager_id TEXT,
-                CHECK (manager_id IS NULL OR manager_id <> id),
+                reports_to_department_id TEXT,
                 FOREIGN KEY (department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
-                FOREIGN KEY (manager_id) REFERENCES people(id)
+                FOREIGN KEY (reports_to_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
             );
 
@@ -112,12 +128,18 @@ def initialize() -> None:
             """
         )
         migrate_departments_table(connection)
+        migrate_people_table(connection)
+        migrate_people_reports_to_department(connection)
+        migrate_department_reports_to_department(connection)
+        migrate_sort_order(connection)
         connection.executescript(
             """
             CREATE INDEX IF NOT EXISTS idx_people_department ON people(department_id);
             CREATE INDEX IF NOT EXISTS idx_people_manager ON people(manager_id);
+            CREATE INDEX IF NOT EXISTS idx_people_reports_to_department ON people(reports_to_department_id);
             CREATE INDEX IF NOT EXISTS idx_departments_parent ON departments(parent_department_id);
             CREATE INDEX IF NOT EXISTS idx_departments_reports_to ON departments(reports_to_id);
+            CREATE INDEX IF NOT EXISTS idx_departments_reports_to_department ON departments(reports_to_department_id);
 
             CREATE TRIGGER IF NOT EXISTS people_id_globally_unique
             BEFORE INSERT ON people
@@ -178,16 +200,20 @@ def migrate_departments_table(connection: sqlite3.Connection) -> None:
                 name TEXT NOT NULL DEFAULT '',
                 parent_department_id TEXT,
                 reports_to_id TEXT,
+                reports_to_department_id TEXT,
                 head_id TEXT,
                 CHECK (parent_department_id IS NULL OR parent_department_id <> id),
+                CHECK (reports_to_department_id IS NULL OR reports_to_department_id <> id),
                 FOREIGN KEY (parent_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
                 FOREIGN KEY (reports_to_id) REFERENCES people(id)
+                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+                FOREIGN KEY (reports_to_department_id) REFERENCES departments(id)
                     ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
             );
 
-            INSERT INTO departments_new(id, name, parent_department_id, reports_to_id, head_id)
-            SELECT id, name, parent_department_id, reports_to_id, head_id
+            INSERT INTO departments_new(id, name, parent_department_id, reports_to_id, reports_to_department_id, head_id)
+            SELECT id, name, parent_department_id, reports_to_id, NULL, head_id
             FROM departments;
 
             DROP TABLE departments;
@@ -196,6 +222,89 @@ def migrate_departments_table(connection: sqlite3.Connection) -> None:
         )
     finally:
         connection.execute("PRAGMA foreign_keys = ON")
+
+
+def migrate_people_table(connection: sqlite3.Connection) -> None:
+    foreign_keys = connection.execute("PRAGMA foreign_key_list(people)").fetchall()
+    manager_has_fk = any(row["from"] == "manager_id" for row in foreign_keys)
+    if not manager_has_fk:
+        return
+
+    connection.commit()
+    connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        connection.executescript(
+            """
+            DROP TRIGGER IF EXISTS people_id_globally_unique;
+            DROP TRIGGER IF EXISTS department_id_globally_unique;
+            DROP TABLE IF EXISTS people_new;
+
+            CREATE TABLE people_new (
+                id TEXT PRIMARY KEY NOT NULL CHECK (length(trim(id)) > 0),
+                name TEXT NOT NULL DEFAULT '',
+                position TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT 'employee'
+                    CHECK (role IN ('founder', 'director', 'manager', 'employee')),
+                department_id TEXT,
+                manager_id TEXT,
+                reports_to_department_id TEXT,
+                FOREIGN KEY (department_id) REFERENCES departments(id)
+                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+                FOREIGN KEY (reports_to_department_id) REFERENCES departments(id)
+                    ON UPDATE CASCADE ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
+            );
+
+            INSERT INTO people_new(id, name, position, role, department_id, manager_id, reports_to_department_id)
+            SELECT id, name, position, role, department_id, manager_id, reports_to_department_id
+            FROM people;
+
+            DROP TABLE people;
+            ALTER TABLE people_new RENAME TO people;
+            """
+        )
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+
+def migrate_people_reports_to_department(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(people)").fetchall()
+    }
+    if "reports_to_department_id" in columns:
+        return
+    connection.execute("ALTER TABLE people ADD COLUMN reports_to_department_id TEXT")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_people_reports_to_department ON people(reports_to_department_id)"
+    )
+
+
+def migrate_department_reports_to_department(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(departments)").fetchall()
+    }
+    if "reports_to_department_id" in columns:
+        return
+    connection.execute("ALTER TABLE departments ADD COLUMN reports_to_department_id TEXT")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_departments_reports_to_department ON departments(reports_to_department_id)"
+    )
+
+
+def migrate_sort_order(connection: sqlite3.Connection) -> None:
+    people_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(people)").fetchall()
+    }
+    department_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(departments)").fetchall()
+    }
+    if "sort_order" not in people_columns:
+        connection.execute("ALTER TABLE people ADD COLUMN sort_order INTEGER")
+    if "sort_order" not in department_columns:
+        connection.execute("ALTER TABLE departments ADD COLUMN sort_order INTEGER")
 
 
 def normalize_structure(payload: Any) -> dict[str, Any]:
@@ -221,7 +330,9 @@ def normalize_structure(payload: Any) -> dict[str, Any]:
                 "position": _clean(raw.get("position")),
                 "role": role,
                 "departmentId": _clean(raw.get("departmentId")),
-                "managerId": _clean(raw.get("managerId")),
+                "managerId": _join_ids(raw.get("managerId")),
+                "reportsToDepartmentId": _clean(raw.get("reportsToDepartmentId")),
+                "sortOrder": _nullable_int(raw.get("sortOrder")),
             }
         )
 
@@ -235,7 +346,9 @@ def normalize_structure(payload: Any) -> dict[str, Any]:
                 "name": _clean(raw.get("name")),
                 "parentDepartmentId": _clean(raw.get("parentDepartmentId")),
                 "reportsToId": _clean(raw.get("reportsToId")),
+                "reportsToDepartmentId": _clean(raw.get("reportsToDepartmentId")),
                 "headId": _join_ids(raw.get("headId")),
+                "sortOrder": _nullable_int(raw.get("sortOrder")),
             }
         )
 
@@ -256,6 +369,26 @@ def _has_cycle(parent_by_id: dict[str, str]) -> bool:
     return False
 
 
+def _has_graph_cycle(edges_by_id: dict[str, list[str]]) -> bool:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(item_id: str) -> bool:
+        if item_id in visiting:
+            return True
+        if item_id in visited:
+            return False
+        visiting.add(item_id)
+        for parent_id in edges_by_id.get(item_id, []):
+            if parent_id and parent_id in edges_by_id and visit(parent_id):
+                return True
+        visiting.remove(item_id)
+        visited.add(item_id)
+        return False
+
+    return any(visit(item_id) for item_id in edges_by_id)
+
+
 def validate_structure(structure: dict[str, Any]) -> None:
     people = structure["people"]
     departments = structure["departments"]
@@ -270,10 +403,13 @@ def validate_structure(structure: dict[str, Any]) -> None:
     department_ids = {department["id"] for department in departments}
 
     for person in people:
-        if person["managerId"] and person["managerId"] not in people_ids:
-            raise ValidationError(f"Руководитель сотрудника «{person['name']}» не найден.")
-        if person["managerId"]:
-            manager = next(item for item in people if item["id"] == person["managerId"])
+        manager_ids = _id_list(person["managerId"])
+        if person["id"] in manager_ids:
+            raise ValidationError(f"Сотрудник «{person['name']}» не может быть руководителем самому себе.")
+        for manager_id in manager_ids:
+            if manager_id not in people_ids:
+                raise ValidationError(f"Руководитель сотрудника «{person['name']}» не найден.")
+            manager = next(item for item in people if item["id"] == manager_id)
             if manager["departmentId"] != person["departmentId"]:
                 raise ValidationError(
                     f"Прямой руководитель сотрудника «{person['name']}» должен быть из того же отдела."
@@ -281,11 +417,20 @@ def validate_structure(structure: dict[str, Any]) -> None:
         if person["departmentId"] and person["departmentId"] not in department_ids:
             raise ValidationError(f"Отдел сотрудника «{person['name']}» не найден.")
 
+        if person["reportsToDepartmentId"] and person["reportsToDepartmentId"] not in department_ids:
+            raise ValidationError(f"Department parent for person '{person['name']}' was not found.")
+        if manager_ids and person["reportsToDepartmentId"]:
+            raise ValidationError(f"Person '{person['name']}' can have only one hierarchy parent.")
+
     for department in departments:
         if department["parentDepartmentId"] and department["parentDepartmentId"] not in department_ids:
             raise ValidationError(f"Родитель для отдела «{department['name']}» не найден.")
         if department["reportsToId"] and department["reportsToId"] not in people_ids:
             raise ValidationError(f"Куратор отдела «{department['name']}» не найден.")
+        if department["reportsToDepartmentId"] and department["reportsToDepartmentId"] not in department_ids:
+            raise ValidationError(f"Родительский отдел для «{department['name']}» не найден.")
+        if department["reportsToId"] and department["reportsToDepartmentId"]:
+            raise ValidationError(f"У отдела «{department['name']}» может быть только один внешний родитель.")
         for head_id in _id_list(department["headId"]):
             if head_id not in people_ids:
                 raise ValidationError(f"Руководитель отдела «{department['name']}» не найден.")
@@ -295,12 +440,13 @@ def validate_structure(structure: dict[str, Any]) -> None:
                     f"Руководитель отдела «{department['name']}» должен состоять в этом отделе."
                 )
 
-    if _has_cycle({person["id"]: person["managerId"] for person in people}):
+    if _has_graph_cycle({person["id"]: _id_list(person["managerId"]) for person in people}):
         raise ValidationError("Обнаружен цикл в подчинении сотрудников.")
-    if _has_cycle(
-        {department["id"]: department["parentDepartmentId"] for department in departments}
-    ):
-        raise ValidationError("Обнаружен цикл во вложенности отделов.")
+    if _has_graph_cycle({
+        department["id"]: [department["parentDepartmentId"], department["reportsToDepartmentId"]]
+        for department in departments
+    }):
+        raise ValidationError("Обнаружен цикл в связях отделов.")
 
 
 def get_structure() -> dict[str, Any]:
@@ -313,9 +459,11 @@ def get_structure() -> dict[str, Any]:
                 "role": row["role"],
                 "departmentId": row["department_id"] or "",
                 "managerId": row["manager_id"] or "",
+                "reportsToDepartmentId": row["reports_to_department_id"] or "",
+                "sortOrder": "" if row["sort_order"] is None else str(row["sort_order"]),
             }
             for row in connection.execute(
-                "SELECT id, name, position, role, department_id, manager_id FROM people ORDER BY rowid"
+                "SELECT id, name, position, role, department_id, manager_id, reports_to_department_id, sort_order FROM people ORDER BY rowid"
             )
         ]
         departments = [
@@ -324,11 +472,13 @@ def get_structure() -> dict[str, Any]:
                 "name": row["name"],
                 "parentDepartmentId": row["parent_department_id"] or "",
                 "reportsToId": row["reports_to_id"] or "",
+                "reportsToDepartmentId": row["reports_to_department_id"] or "",
                 "headId": row["head_id"] or "",
+                "sortOrder": "" if row["sort_order"] is None else str(row["sort_order"]),
             }
             for row in connection.execute(
                 """
-                SELECT id, name, parent_department_id, reports_to_id, head_id
+                SELECT id, name, parent_department_id, reports_to_id, reports_to_department_id, head_id, sort_order
                 FROM departments ORDER BY rowid
                 """
             )
@@ -349,15 +499,17 @@ def replace_structure(payload: Any) -> dict[str, Any]:
 
         connection.executemany(
             """
-            INSERT INTO departments(id, name, parent_department_id, reports_to_id, head_id)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO departments(id, name, sort_order, parent_department_id, reports_to_id, reports_to_department_id, head_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     item["id"],
                     item["name"],
+                    item["sortOrder"],
                     _nullable(item["parentDepartmentId"]),
                     _nullable(item["reportsToId"]),
+                    _nullable(item["reportsToDepartmentId"]),
                     _nullable(item["headId"]),
                 )
                 for item in structure["departments"]
@@ -365,17 +517,19 @@ def replace_structure(payload: Any) -> dict[str, Any]:
         )
         connection.executemany(
             """
-            INSERT INTO people(id, name, position, role, department_id, manager_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO people(id, name, position, sort_order, role, department_id, manager_id, reports_to_department_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     item["id"],
                     item["name"],
                     item["position"],
+                    item["sortOrder"],
                     item["role"],
                     _nullable(item["departmentId"]),
                     _nullable(item["managerId"]),
+                    _nullable(item["reportsToDepartmentId"]),
                 )
                 for item in structure["people"]
             ],

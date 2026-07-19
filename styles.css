@@ -17,9 +17,9 @@
   --department-bg: #F3FFFD;
   --department-border: #14B8A6;
   --department-header: #F3FFFD;
-  --subdepartment-bg: #F7FFFE;
+  --subdepartment-bg: #ffffff;
   --subdepartment-border: #7DD3C7;
-  --subdepartment-header: #F7FFFE;
+  --subdepartment-header: #ffffff;
   --white-border: #cbd5e1;
   --danger: #dc2626;
 }
@@ -237,7 +237,7 @@ main { display: grid; gap: 16px; padding: 16px; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 56px;
+  gap: 42px;
   width: max-content;
   min-width: 100%;
 }
@@ -252,14 +252,34 @@ main { display: grid; gap: 16px; padding: 16px; }
   position: relative;
 }
 
+.chart-vertical .v-node {
+  gap: 16px;
+  --v-step-indent: 128px;
+  --v-spine-x: calc(var(--v-step-indent) - 32px);
+  --v-elbow-width: 32px;
+  --v-parent-link-overlap: 26px;
+  --v-mask-bg: #ffffff;
+}
+
+.chart-vertical .v-department-node {
+  --v-mask-bg: var(--department-bg);
+}
+
+.chart-vertical .department-box .v-node,
+.chart-vertical .department-box .v-children,
+.chart-vertical .department-box .department-managed {
+  --v-mask-bg: var(--department-bg);
+}
+
 .chart-vertical .v-children {
-  --v-depth: 30px;
-  --v-mid: 15px;
+  --v-depth: 36px;
+  --v-mid: 20px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  gap: 34px;
+  gap: 36px;
   width: max-content;
+  min-width: 0;
   padding-top: var(--v-depth);
   position: relative;
 }
@@ -279,8 +299,19 @@ main { display: grid; gap: 16px; padding: 16px; }
   height: var(--v-mid);
 }
 
+.chart-vertical .v-children.is-horizontal.multiple::after {
+  content: "";
+  position: absolute;
+  top: var(--v-mid);
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--line);
+  z-index: 0;
+}
+
 .chart-vertical .v-children > .v-branch {
-  padding: 0 4px;
+  padding: 0 8px;
 }
 
 .chart-vertical .v-children > .v-branch::before {
@@ -292,14 +323,15 @@ main { display: grid; gap: 16px; padding: 16px; }
   height: var(--v-mid);
   transform: translateX(-50%);
   background: var(--line);
+  z-index: 2;
 }
 
 .chart-vertical .v-children.multiple > .v-branch::after {
   content: "";
   position: absolute;
   top: calc(-1 * var(--v-mid));
-  left: -17px;
-  right: -17px;
+  left: 18px;
+  right: 18px;
   height: 2px;
   background: var(--line);
 }
@@ -317,14 +349,71 @@ main { display: grid; gap: 16px; padding: 16px; }
   right: 50%;
 }
 
+.chart-vertical .v-children.is-vertical {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 16px;
+  padding-top: 30px;
+  padding-left: 34px;
+}
+
+.chart-vertical .v-children.is-vertical::before {
+  left: 34px;
+  height: calc(100% - 28px);
+  transform: none;
+}
+
+.chart-vertical .v-children.is-vertical.multiple::before {
+  height: calc(100% - 28px);
+}
+
+.chart-vertical .v-children.is-vertical > .v-branch {
+  align-items: flex-start;
+  padding: 0;
+}
+
+.chart-vertical .v-children.is-vertical > .v-branch::before {
+  top: 50%;
+  left: -34px;
+  width: 34px;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.chart-vertical .v-children.is-vertical.multiple > .v-branch::after {
+  display: none;
+}
+
 .chart-vertical .v-children.no-parent {
   padding-top: 0;
+  min-width: 0;
 }
 
 .chart-vertical .v-children.no-parent::before,
 .chart-vertical .v-children.no-parent > .v-branch::before,
 .chart-vertical .v-children.no-parent > .v-branch::after {
   display: none;
+}
+
+.chart-vertical .v-plain-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: max-content;
+}
+
+.chart-vertical .v-plain-list.is-row {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.chart-vertical .v-plain-item {
+  display: flex;
+  justify-content: center;
+  width: max-content;
 }
 
 .chart-vertical .v-department-body {
@@ -335,17 +424,244 @@ main { display: grid; gap: 16px; padding: 16px; }
   padding-top: 16px;
 }
 
-.chart-vertical .v-person-list {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+.chart-vertical .department-managed {
+  position: relative;
+}
+
+.chart-vertical .v-children {
+  padding-top: 18px;
+}
+
+.chart-vertical .v-children.is-vertical {
+  padding-top: 14px;
+  padding-left: 0;
+  align-items: flex-start;
+}
+
+.chart-vertical .v-children.is-vertical > .v-branch,
+.chart-vertical .v-children.is-vertical .v-node {
+  align-items: flex-start;
+}
+
+.chart-vertical .v-department-node > .v-children.is-vertical {
+  align-self: flex-start;
+  padding-left: var(--v-step-indent);
+  margin-top: 10px;
+}
+
+.chart-vertical .v-person-node > .v-children.has-managed-children.is-vertical {
+  align-self: flex-start;
+  padding-left: 0;
+  margin-left: var(--v-step-indent);
+  margin-top: 10px;
+}
+
+.chart-vertical .v-person-node.is-stepped-parent {
+  align-items: flex-start;
+}
+
+.chart-vertical .v-department-node > .v-children.is-vertical > .v-branch {
+  width: auto;
+}
+
+.chart-vertical .v-department-body {
+  align-items: flex-start;
+  width: 100%;
+}
+
+.chart-vertical .department-head-person,
+.chart-vertical .department-members,
+.chart-vertical .department-subdepartments,
+.chart-vertical .department-managed {
+  align-items: flex-start;
+  width: 100%;
+}
+
+.chart-vertical .v-plain-list {
+  align-items: flex-start;
+}
+
+.chart-vertical .department-shared-head-group {
+  --shared-head-primary-x: 0px;
+  width: 100%;
+  position: relative;
+}
+
+.chart-vertical .shared-head-heads {
+  width: 100%;
+}
+
+.chart-vertical .shared-head-connector-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.chart-vertical .shared-head-bus,
+.chart-vertical .shared-head-spine,
+.chart-vertical .shared-head-drop {
+  position: absolute;
+  background: var(--line);
+}
+
+.chart-vertical .shared-head-bus {
+  top: var(--shared-head-bus-top, 0px);
+  left: var(--shared-head-bus-left, 0px);
+  width: var(--shared-head-bus-width, 0px);
+  height: 2px;
+}
+
+.chart-vertical .shared-head-spine {
+  top: var(--shared-head-spine-top, 0px);
+  left: var(--shared-head-primary-x, 0px);
+  width: 2px;
+  height: var(--shared-head-spine-height, 0px);
+  transform: translateX(-50%);
+}
+
+.chart-vertical .shared-head-drop {
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.chart-vertical .shared-head-children {
+  margin-top: 28px;
+  margin-left: calc(var(--shared-head-primary-x, 0px) + var(--v-elbow-width));
+  position: relative;
   width: max-content;
 }
 
-.chart-vertical .v-list-item {
-  display: flex;
-  justify-content: center;
+.chart-vertical .shared-head-children > .v-plain-list {
+  position: relative;
+}
+
+.chart-vertical .shared-head-children > .v-plain-list::before {
+  content: "";
+  position: absolute;
+  top: -14px;
+  left: calc(-1 * var(--v-elbow-width));
+  width: 2px;
+  height: calc(var(--shared-spine-height, 0px) + 14px);
+  background: var(--line);
+}
+
+.chart-vertical .shared-head-children > .v-plain-list > .v-plain-item {
+  position: relative;
+}
+
+.chart-vertical .shared-head-children > .v-plain-list > .v-plain-item::before {
+  content: "";
+  position: absolute;
+  top: 29px;
+  left: calc(-1 * var(--v-elbow-width));
+  width: var(--v-elbow-width);
+  height: 2px;
+  background: var(--line);
+}
+
+.chart-vertical .v-children::before,
+.chart-vertical .v-children::after,
+.chart-vertical .v-children > .v-branch::before,
+.chart-vertical .v-children > .v-branch::after {
+  display: none !important;
+}
+
+.chart-vertical .v-children.no-parent::before,
+.chart-vertical .v-children.no-parent::after,
+.chart-vertical .v-children.no-parent > .v-branch::before,
+.chart-vertical .v-children.no-parent > .v-branch::after {
+  display: none !important;
+}
+
+.chart-vertical .v-children.level-1.single:not(.no-parent)::before {
+  content: "";
+  display: block !important;
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  width: 2px;
+  height: 34px;
+  transform: translateX(-50%);
+  background: var(--line);
+}
+
+.chart-vertical .v-children.level-2.is-horizontal:not(.no-parent) {
+  --top-row-connector: 42px;
+  --top-row-parent-gap: 16px;
+  padding-top: 58px;
+}
+
+.chart-vertical .v-children.level-2.is-horizontal:not(.no-parent)::before {
+  content: "";
+  display: block !important;
+  position: absolute;
+  top: calc(-1 * var(--top-row-parent-gap));
+  left: 50%;
+  width: 2px;
+  height: calc(var(--top-row-parent-gap) + var(--top-row-connector));
+  transform: translateX(-50%);
+  background: var(--line);
+}
+
+.chart-vertical .v-children.level-2.is-horizontal.multiple:not(.no-parent)::after {
+  content: "";
+  display: block !important;
+  position: absolute;
+  top: var(--top-row-connector);
+  left: var(--top-row-line-left, 0px);
+  width: var(--top-row-line-width, 0px);
+  height: 2px;
+  background: var(--line);
+}
+
+.chart-vertical .v-children.level-2.is-horizontal:not(.no-parent) > .v-branch::before {
+  content: "";
+  display: block !important;
+  position: absolute;
+  top: calc(var(--top-row-branch-top, 0px) - var(--top-row-branch-height, var(--top-row-connector)));
+  left: var(--top-row-branch-x, 50%);
+  width: 2px;
+  height: var(--top-row-branch-height, var(--top-row-connector));
+  transform: translateX(-50%);
+  background: var(--line);
+}
+
+.chart-vertical .v-children.level-2.is-horizontal.single:not(.no-parent)::after,
+.chart-vertical .v-children.level-2.is-horizontal.single:not(.no-parent) > .v-branch::before {
+  display: none !important;
+}
+
+.chart-vertical .v-department-node > .v-children.is-vertical::before,
+.chart-vertical .v-person-node.is-stepped-parent > .v-children.has-managed-children.is-vertical::before {
+  content: "";
+  display: block !important;
+  position: absolute;
+  top: calc(-1 * var(--v-parent-link-overlap));
+  width: 2px;
+  height: var(--v-spine-height, calc(100% + 2px));
+  transform: none;
+  background: var(--line);
+}
+
+.chart-vertical .v-department-node > .v-children.is-vertical::before {
+  left: var(--v-spine-x);
+}
+
+.chart-vertical .v-person-node.is-stepped-parent > .v-children.has-managed-children.is-vertical::before {
+  left: calc(-1 * var(--v-elbow-width));
+}
+
+.chart-vertical .v-department-node > .v-children.is-vertical > .v-branch::before,
+.chart-vertical .v-person-node.is-stepped-parent > .v-children.has-managed-children.is-vertical > .v-branch::before {
+  content: "";
+  display: block !important;
+  position: absolute;
+  top: 34px;
+  left: calc(-1 * var(--v-elbow-width));
+  width: var(--v-elbow-width);
+  height: 2px;
+  transform: none;
+  background: var(--line);
 }
 
 .chart-vertical .department-box {
@@ -410,6 +726,11 @@ main { display: grid; gap: 16px; padding: 16px; }
   background: var(--subdepartment-bg);
 }
 
+.department-box .department-box {
+  border-color: var(--subdepartment-border);
+  background: var(--subdepartment-bg);
+}
+
 .department-header {
   display: flex;
   align-items: flex-start;
@@ -423,6 +744,10 @@ main { display: grid; gap: 16px; padding: 16px; }
 }
 
 .department-subdepartments .department-header {
+  background: var(--subdepartment-header);
+}
+
+.department-box .department-box .department-header {
   background: var(--subdepartment-header);
 }
 
@@ -507,6 +832,13 @@ main { display: grid; gap: 16px; padding: 16px; }
   width: 100%;
 }
 
+.department-shared-children {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-top: 8px;
+}
+
 .department-head-person + .department-members {
   padding-top: 12px;
   border-top: 1px solid #eef2f7;
@@ -578,6 +910,7 @@ main { display: grid; gap: 16px; padding: 16px; }
   display: grid;
   gap: 9px;
   min-width: 300px;
+  max-width: 360px;
   padding: 14px 4px 0;
 }
 
@@ -598,13 +931,16 @@ main { display: grid; gap: 16px; padding: 16px; }
 
 .department-summary-value {
   min-width: 0;
+  white-space: normal;
   overflow-wrap: anywhere;
+  word-break: normal;
   color: #1f2937;
   font-weight: 700;
 }
 
 .department-box.is-collapsed {
   min-width: 360px;
+  max-width: 430px;
 }
 
 .department-box.is-collapsed .department-header {
@@ -642,7 +978,8 @@ td select[multiple] {
   padding: 6px;
 }
 
-.head-checkboxes {
+.head-checkboxes,
+.manager-checkboxes {
   display: grid;
   gap: 5px;
   min-width: 220px;
@@ -654,7 +991,8 @@ td select[multiple] {
   background: #fff;
 }
 
-.head-checkbox {
+.head-checkbox,
+.manager-checkbox {
   display: grid;
   grid-template-columns: 15px minmax(0, 1fr);
   align-items: start;
@@ -664,7 +1002,8 @@ td select[multiple] {
   line-height: 1.25;
 }
 
-.head-checkbox input {
+.head-checkbox input,
+.manager-checkbox input {
   width: 15px;
   min-width: 15px;
   height: 15px;

@@ -67,7 +67,7 @@ class OrgChartHandler(SimpleHTTPRequestHandler):
             return self._send_json(database.replace_structure(self._read_json()))
         except OverflowError as error:
             return self._send_json({"error": str(error)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, database.ValidationError) as error:
             status = HTTPStatus.UNPROCESSABLE_ENTITY if isinstance(error, database.ValidationError) else HTTPStatus.BAD_REQUEST
             return self._send_json({"error": str(error)}, status)
         except sqlite3.IntegrityError as error:
